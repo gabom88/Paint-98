@@ -16,10 +16,11 @@ Funciona sin conexión y se puede instalar en la pantalla de inicio
 
 ## Qué puede hacer
 
-**Herramientas (16):** selección libre y rectangular, borrador (y borrador de
+**Herramientas (17):** selección libre y rectangular, borrador (y borrador de
 color con clic derecho), bote de pintura, cuentagotas, lupa, lápiz, pincel,
 aerógrafo, texto, línea, curva, rectángulo, polígono, elipse y rectángulo
-redondeado.
+redondeado, y la **mano** para mover la vista (útil en pantallas táctiles;
+en computadora también con la barra espaciadora).
 
 - **Gruesos:** lápiz, líneas y bordes de figuras de 1 a 48 px. Pincel de 1 a
   64 px en cuatro formas (redonda, cuadrada y dos diagonales). Borrador de 2 a
@@ -79,7 +80,7 @@ redondeado.
   para ponerla **a la izquierda, a la derecha, arriba o abajo**. Arriba o abajo
   queda acostada, con sus opciones al lado. También se elige desde el menú Ver.
 - **Celular:** dos dedos mueven la imagen; si los separas o los juntas, la
-  amplías o la reduces.
+  amplías o la reduces, en cualquier zona (también en los bordes del lienzo).
 - **Carpeta Dibujos:** "Guardar" deja tus dibujos en este dispositivo, sin
   subirlos a internet. "Abrir" los muestra en miniatura en una ventana de
   explorador, donde también se pueden eliminar. Al minimizar, la carpeta
@@ -113,6 +114,7 @@ redondeado.
 | `Ctrl+K` | Mostrar u ocultar el panel de capas |
 | `Ctrl + rueda del mouse` / `Ctrl+` `+` `−` | Zoom de 1 % en 1 % (de 10 % a 800 %) |
 | `Ctrl+0` | Ajustar el zoom a la ventana |
+| `Espacio` (mantener) | Mano: mover la vista |
 | `Esc` | Cancelar lo que se está dibujando |
 | `F1` | Ayuda |
 

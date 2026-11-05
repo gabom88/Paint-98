@@ -421,3 +421,9 @@ img.px.inl { display: inline-block; width: 16px; height: 16px; vertical-align: -
 .toolbox.horiz .llist { flex-direction: row-reverse; max-height: none; overflow-x: auto; max-width: 60vw; }
 .toolbox.horiz .lname { display: none; }
 .toolbox.horiz .lop { width: 70px; }
+
+/* ---------- Mano (mover la vista) ---------- */
+.stage.t-hand, .stage.t-hand-tmp, .stage.t-hand *, .stage.t-hand-tmp * { cursor: grab !important; }
+.stage.grabbing, .stage.grabbing * { cursor: grabbing !important; }
+.workspace:has(.stage.t-hand), .workspace:has(.stage.t-hand-tmp) { cursor: grab; }
+.toolbox.horiz .tools { grid-template-columns: repeat(9, var(--tb)); }

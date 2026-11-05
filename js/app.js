@@ -33,6 +33,7 @@ const TOOLS = [
   ["poly", "Polígono", "Dibuja un polígono con el estilo de relleno seleccionado."],
   ["ellipse", "Elipse", "Dibuja una elipse con el estilo de relleno seleccionado."],
   ["rrect", "Rectángulo redondeado", "Dibuja un rectángulo redondeado con el estilo de relleno seleccionado."],
+  ["hand", "Mano", "Arrastra para mover la vista del dibujo. (También: mantén presionada la barra espaciadora)."],
 ];
 const TOOLMAP = Object.fromEntries(TOOLS.map((t) => [t[0], t]));
 const WIDTHS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 32, 40, 48]; // lápiz, líneas, curvas y figuras
@@ -305,7 +306,7 @@ function layout() {
   for (const c of [layersEl, ov, ...layers.map((l) => l.canvas)]) { c.style.width = W + "px"; c.style.height = H + "px"; }
   for (const l of layers) l.canvas.style.imageRendering = z < 1 ? "auto" : "";
   layersEl.style.backgroundSize = `${8 * z}px ${8 * z}px`;
-  stage.style.width = W + 8 + "px"; stage.style.height = H + 8 + "px";
+  stage.style.width = W + 8 + "px"; stage.style.height = H + 8 + "px"; stage.style.margin = PAD + "px";
   const g = $("grid");
   g.hidden = !(S.grid && z >= 4);
   g.style.width = W + "px"; g.style.height = H + "px"; g.style.backgroundSize = `${z}px ${z}px`;
@@ -317,17 +318,26 @@ function layout() {
   positionText();
   stage.className = "stage t-" + S.tool;
 }
+// Margen gris alrededor del lienzo: deja mover y ampliar hacia cualquier zona, también en los bordes
+const PAD = Math.max(screen.width || 0, screen.height || 0, innerWidth, innerHeight);
+function wsCenter() { const wr = ws.getBoundingClientRect(); return { x: wr.left + ws.clientWidth / 2, y: wr.top + ws.clientHeight / 2 }; }
+function scrollHome() { // lienzo arriba a la izquierda, como al abrir Paint
+  const wr = ws.getBoundingClientRect(), r = cv.getBoundingClientRect();
+  ws.scrollLeft += r.left - wr.left - 6; ws.scrollTop += r.top - wr.top - 6;
+}
 function setZoom(z, center) {
-  const cx = center ? center.x : (ws.scrollLeft + ws.clientWidth / 2) / S.zoom;
-  const cy = center ? center.y : (ws.scrollTop + ws.clientHeight / 2) / S.zoom;
+  const wc = wsCenter(), r0 = cv.getBoundingClientRect();
+  const cx = center ? center.x : (wc.x - r0.left) / S.zoom;
+  const cy = center ? center.y : (wc.y - r0.top) / S.zoom;
   z = clamp(z, ZOOM_MIN, ZOOM_MAX);
   S.zoom = z;
   // Al reducir, suavizar; al ampliar, píxeles nítidos
   for (const c of [ov, selcv]) c.style.imageRendering = z < 1 ? "auto" : "";
   if (typeof flash === "function" && z !== 1) flash(`Zoom: ${pct(z)}`);
   layout();
-  ws.scrollLeft = cx * z - ws.clientWidth / 2;
-  ws.scrollTop = cy * z - ws.clientHeight / 2;
+  const r1 = cv.getBoundingClientRect();
+  ws.scrollLeft += r1.left + cx * z - wc.x;
+  ws.scrollTop += r1.top + cy * z - wc.y;
   renderOptions();
 }
 function clearOv() { octx.clearRect(0, 0, ov.width, ov.height); }
@@ -336,7 +346,8 @@ function pt(e) {
   return { x: Math.floor((e.clientX - r.left) / S.zoom), y: Math.floor((e.clientY - r.top) / S.zoom) };
 }
 function visibleOrigin() {
-  return { x: clamp(Math.floor(ws.scrollLeft / S.zoom), 0, cv.width - 1), y: clamp(Math.floor(ws.scrollTop / S.zoom), 0, cv.height - 1) };
+  const wr = ws.getBoundingClientRect(), r = cv.getBoundingClientRect();
+  return { x: clamp(Math.floor((wr.left - r.left) / S.zoom), 0, cv.width - 1), y: clamp(Math.floor((wr.top - r.top) / S.zoom), 0, cv.height - 1) };
 }
 
 // ---------- Guardado automático (IndexedDB) ----------
@@ -637,7 +648,9 @@ function pickAt(o) {
   renderColors();
 }
 
+let spaceHand = false;
 const H = {
+  hand: { up() { stage.classList.remove("grabbing"); } },
   pencil: {
     down(o) { pushUndo(); o.pushed = true; R.ink(ctx, o.fg); R.stamp(ctx, o.x, o.y, pencilSpans()); R.ink(ctx, "#000"); },
     move(o) { R.ink(ctx, o.fg); R.line(ctx, o.lx, o.ly, o.x, o.y, pencilSpans(), true); R.ink(ctx, "#000"); },
@@ -851,6 +864,7 @@ const touches = new Map();
 let pan = null;
 function cancelOp() {
   if (!op) return;
+  stage.classList.remove("grabbing");
   clearInterval(op.timer);
   if (op.pushed && undo.length) applyEntry(undo.pop());
   if (op.kind === "curve" && curve && curve.stage === 0) curve = null;
@@ -870,12 +884,22 @@ ws.addEventListener("pointerdown", (e) => {
   closeMenu();
   if (e.pointerType === "touch") {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (touches.size === 2) { cancelOp(); pan = touchInfo(); pan.d0 = pan.d; pan.z0 = S.zoom; return; }
+    if (touches.size === 2) {
+      cancelOp(); pan = touchInfo(); pan.d0 = pan.d; pan.z0 = S.zoom;
+      const r = cv.getBoundingClientRect(); // punto de la imagen que queda entre los dedos
+      pan.ix = (pan.mx - r.left) / S.zoom; pan.iy = (pan.my - r.top) / S.zoom;
+      return;
+    }
     if (touches.size > 2) return;
   }
   if (pan) return;
   if (e.target === textedit) return;
-  if (e.button === 1) return;
+  if (e.button === 1 || S.tool === "hand" || spaceHand) { // mano: mover la vista desde cualquier lugar
+    e.preventDefault(); try { ws.setPointerCapture(e.pointerId); } catch {}
+    op = { kind: "hand", id: e.pointerId, cx: e.clientX, cy: e.clientY, x: 0, y: 0 };
+    stage.classList.add("grabbing");
+    return;
+  }
   if (!stage.contains(e.target)) { commitText(); finishCurve(); finishPoly(); if (S.tool !== "select" && S.tool !== "freesel") commitSel(); else commitSel(); return; }
   e.preventDefault();
   try { ws.setPointerCapture(e.pointerId); } catch {}
@@ -896,11 +920,13 @@ ws.addEventListener("pointermove", (e) => {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pan && touches.size >= 2) {
       const t = touchInfo();
-      ws.scrollLeft -= t.mx - pan.mx; ws.scrollTop -= t.my - pan.my;
-      // Pellizco continuo, de 1 % en 1 %
+      // Pellizco continuo, de 1 % en 1 %; el mismo punto de la imagen sigue entre los dedos
       const z = roundZ(pan.z0 * (t.d / pan.d0));
-      if (z !== S.zoom) zoomAt(z, t.mx, t.my);
-      t.d0 = pan.d0; t.z0 = pan.z0;
+      if (z !== S.zoom) setZoom(z);
+      const r = cv.getBoundingClientRect();
+      ws.scrollLeft += r.left + pan.ix * S.zoom - t.mx;
+      ws.scrollTop += r.top + pan.iy * S.zoom - t.my;
+      Object.assign(t, { d0: pan.d0, z0: pan.z0, ix: pan.ix, iy: pan.iy });
       pan = t;
       return;
     }
@@ -909,6 +935,7 @@ ws.addEventListener("pointermove", (e) => {
   setPos(p.x >= 0 && p.y >= 0 && p.x < cv.width && p.y < cv.height ? p : null);
   if (e.pointerType === "mouse" || (op && op.id === e.pointerId)) { lastPtr = p; updateEraserCursor(p); }
   if (!op || op.id !== e.pointerId) return;
+  if (op.kind === "hand") { ws.scrollLeft -= e.clientX - op.cx; ws.scrollTop -= e.clientY - op.cy; op.cx = e.clientX; op.cy = e.clientY; return; }
   if (p.x === op.x && p.y === op.y) return;
   op.lx = op.x; op.ly = op.y; op.x = p.x; op.y = p.y; op.shift = e.shiftKey;
   H[op.kind].move?.call(H[op.kind], op, e);
@@ -1307,7 +1334,7 @@ async function fileNew() {
   undo.length = 0; redo.length = 0;
   resetLayers(d.w, d.h, "#ffffff");
   S.fileName = "sin título"; S.docName = null; setTitle();
-  setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
+  setZoom(1, { x: 0, y: 0 }); scrollHome();
   markDirty(); S.dirty = false;
 }
 function fileImport() { $("fileOpen").value = ""; $("fileOpen").click(); }
@@ -1324,7 +1351,7 @@ async function openImage(blob, name, docName = null) {
   ctx.drawImage(c, 0, 0); scheduleThumbs();
   S.fileName = docName || (name || "imagen").replace(/\.[^.]+$/, "") || "imagen"; S.docName = docName; setTitle();
   const fit = Math.min(ws.clientWidth / c.width, ws.clientHeight / c.height);
-  setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
+  setZoom(1, { x: 0, y: 0 }); scrollHome();
   void fit;
   markDirty(); S.dirty = false; saveSettings();
   return true;
@@ -1427,7 +1454,7 @@ async function openDoc(it) {
   undo.length = 0; redo.length = 0;
   await loadLayers(it.layers, it.active || 0);
   S.fileName = it.name; S.docName = it.name; setTitle();
-  setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
+  setZoom(1, { x: 0, y: 0 }); scrollHome();
   markDirty(); S.dirty = false; saveSettings();
   return true;
 }
@@ -1702,7 +1729,8 @@ function helpDlg() {
     html: `<div class="help">
       <p><b>Dibujar:</b> elige una herramienta y arrastra sobre la imagen. Clic izquierdo usa el color de primer plano; clic derecho, el de fondo.</p>
       <p><b>Colores:</b> toca un color para elegirlo. Mantén presionado un color para ponerlo como color de fondo. Toca dos veces para modificarlo. Toca el cuadro de colores actuales para intercambiarlos.</p>
-      <p><b>Pantalla táctil:</b> usa dos dedos para mover la imagen; sepáralos o júntalos para ampliar o reducir (de 10% a 800%).</p>
+      <p><b>Pantalla táctil:</b> usa dos dedos para mover la imagen; sepáralos o júntalos para ampliar o reducir (de 10% a 800%). Puedes ampliar cualquier zona, también los bordes del lienzo.</p>
+      <p><b>Mano:</b> la herramienta de la mano mueve la vista con un dedo o el mouse, sin dibujar. En computadora también puedes mantener presionada la barra espaciadora o arrastrar con el botón central del mouse.</p>
       <p><b>Más espacio:</b> el botón a la derecha del menú (o Ver ▸ Cuadro de herramientas) oculta las herramientas.</p>
       <p><b>Curva:</b> traza la línea y luego toca una o dos veces para doblarla. <b>Polígono:</b> toca cada vértice y termina tocando el punto inicial (o doble clic).</p>
       <p><b>Selección:</b> arrastra para mover; usa los cuadritos para cambiar el tamaño. Ctrl + arrastrar copia; Mayús + arrastrar deja un rastro.</p>
@@ -1939,6 +1967,7 @@ document.addEventListener("keydown", (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (typing && !(mod && ["s", "o", "n"].includes(e.key.toLowerCase()))) return;
   if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); deleteSel(); return; }
+  if (e.code === "Space" && !mod) { e.preventDefault(); if (!spaceHand) { spaceHand = true; stage.classList.add("t-hand-tmp"); } return; }
   if (!mod && !e.altKey) {
     if (e.key === "+" || e.key === "=" || e.code === "NumpadAdd") { e.preventDefault(); bumpSize(1); return; }
     if (e.key === "-" || e.key === "_" || e.code === "NumpadSubtract") { e.preventDefault(); bumpSize(-1); return; }
@@ -1957,6 +1986,7 @@ document.addEventListener("keydown", (e) => {
   if (k === "v") return; // lo maneja el evento "paste"
   if (map[k]) { e.preventDefault(); map[k](); }
 });
+document.addEventListener("keyup", (e) => { if (e.code === "Space" && spaceHand) { spaceHand = false; stage.classList.remove("t-hand-tmp"); } });
 document.addEventListener("paste", async (e) => {
   if (e.target === textedit || e.target.matches?.("input, textarea")) return;
   const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
@@ -2026,6 +2056,7 @@ async function init() {
     }
   } catch {}
   if (!restored) { const d = defaultSize(); resetLayers(d.w, d.h, "#ffffff"); }
+  scrollHome();
   renderLayers();
   stage.className = "stage t-" + S.tool;
   setupUpdates();
