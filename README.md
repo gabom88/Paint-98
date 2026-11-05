@@ -32,6 +32,17 @@ redondeado.
 - **Selecciones:** se pueden mover, cambiar de tamaño, copiar (Ctrl + arrastrar)
   y dejar rastro (Mayús + arrastrar). Tienen modo opaco o transparente.
 
+**Capas** (se activan en *Ver ▸ Capas*; vienen desactivadas)
+
+- Panel retro debajo de las opciones de tamaño, junto a las herramientas.
+- Cada capa tiene miniatura, ojo para mostrarla u ocultarla y **su propia
+  opacidad** (0 a 100 %).
+- Botones para **nueva, duplicar, eliminar, subir, bajar y combinar hacia
+  abajo**; en *Imagen* también está *Acoplar imagen*. Doble toque cambia el
+  nombre.
+- Las capas se guardan en *Dibujos* y en el guardado automático; al exportar
+  PNG se unen las capas visibles. Deshacer también funciona con las capas.
+
 **Colores**
 
 - Paleta de 28 colores. Clic izquierdo elige el color de dibujo y clic derecho
@@ -99,6 +110,7 @@ redondeado.
 | `Ctrl+R` / `Ctrl+W` / `Ctrl+I` / `Ctrl+E` | Voltear o girar / Expandir / Invertir / Atributos |
 | `Ctrl+T` / `Ctrl+L` | Mostrar u ocultar herramientas / colores |
 | `Ctrl+G` / `Ctrl+F` | Cuadrícula / Ver imagen |
+| `Ctrl+K` | Mostrar u ocultar el panel de capas |
 | `Ctrl + rueda del mouse` / `Ctrl+` `+` `−` | Zoom de 1 % en 1 % (de 10 % a 800 %) |
 | `Ctrl+0` | Ajustar el zoom a la ventana |
 | `Esc` | Cancelar lo que se está dibujando |

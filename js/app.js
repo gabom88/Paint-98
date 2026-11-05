@@ -3,7 +3,7 @@ import * as R from "./raster.js";
 import { icon, iconImg } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
-const cv = $("cv"), ctx = cv.getContext("2d", { willReadFrequently: true });
+let cv = $("cv"), ctx = cv.getContext("2d", { willReadFrequently: true }); // capa activa
 const ov = $("ov"), octx = ov.getContext("2d");
 octx._preview = true;
 const selcv = $("selcv"), sctx = selcv.getContext("2d");
@@ -59,14 +59,14 @@ const S = {
   primary: "#000000", secondary: "#ffffff", palette: DEFAULT_PALETTE.slice(), palIdx: 0,
   zoom: 1, grid: false, transparent: false,
   opts: { v: 3, pencil: 0, brush: 4, brushShape: 0, eraser: 3, air: 0, line: 0, fill: 0, zoom: 2 },
-  theme: "std", dock: "bottom", toolDock: "left", docName: null, custom: Array(16).fill("#ffffff"),
+  theme: "std", dock: "bottom", toolDock: "left", docName: null, layersOn: false, custom: Array(16).fill("#ffffff"),
   showTools: true, showColors: true, showStatus: true, showFont: true,
   font: { family: "Arial", size: 16, bold: false, italic: false, underline: false },
   fileName: "sin título", dirty: false,
 };
 try {
   const saved = JSON.parse(localStorage.getItem("paint98.settings") || "{}");
-  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "toolDock", "custom", "docName"]) if (k in saved) S[k] = saved[k];
+  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "toolDock", "custom", "docName", "layersOn"]) if (k in saved) S[k] = saved[k];
   if (!THEMES.some((t) => t[0] === S.theme)) S.theme = "std";
   if (!["bottom", "top", "left", "right"].includes(S.dock)) S.dock = "bottom";
   if (!["bottom", "top", "left", "right"].includes(S.toolDock)) S.toolDock = "left";
@@ -84,8 +84,8 @@ try {
 } catch {}
 function saveSettings() {
   try {
-    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName } = S;
-    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName }));
+    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName, layersOn } = S;
+    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName, layersOn }));
   } catch {}
 }
 
@@ -114,45 +114,198 @@ function setSize(w, h) { $("stSize").textContent = w != null ? `${w}x${h}` : "";
 
 // ---------- Deshacer ----------
 function snap() { return ctx.getImageData(0, 0, cv.width, cv.height); }
-function pushUndo() {
-  undo.push(snap());
-  if (undo.length > UNDO_LIMIT) undo.shift();
-  redo.length = 0;
-  markDirty();
+// Cada paso de "deshacer" guarda solo la capa que cambió, o todas si cambió la estructura o el tamaño
+const lctx = (c) => c.getContext("2d", { willReadFrequently: true });
+const imgOf = (c) => lctx(c).getImageData(0, 0, c.width, c.height);
+function entryOne() { return { id: layers[active].id, img: snap() }; }
+function entryAll() {
+  return { all: true, active, layers: layers.map((l) => ({ id: l.id, name: l.name, opacity: l.opacity, visible: l.visible, img: imgOf(l.canvas) })) };
 }
-function restore(img) {
-  if (img.width !== cv.width || img.height !== cv.height) setCanvasSize(img.width, img.height, false);
-  ctx.putImageData(img, 0, 0);
+function pushEntry(e) { undo.push(e); if (undo.length > UNDO_LIMIT) undo.shift(); redo.length = 0; markDirty(); }
+function pushUndo() { pushEntry(entryOne()); }
+function pushUndoAll() { pushEntry(entryAll()); }
+function counterpart(e) {
+  if (e.all) return entryAll();
+  const l = layers.find((x) => x.id === e.id);
+  return l ? { id: l.id, img: imgOf(l.canvas) } : entryAll();
+}
+function applyEntry(e) {
+  if (e.all) {
+    const W = e.layers[0].img.width, H = e.layers[0].img.height;
+    layers = e.layers.map((d) => { const c = layerCanvas(W, H); lctx(c).putImageData(d.img, 0, 0); return { id: d.id, name: d.name, opacity: d.opacity, visible: d.visible, canvas: c }; });
+    ov.width = W; ov.height = H;
+    setActive(Math.min(e.active, layers.length - 1), true);
+    return;
+  }
+  const l = layers.find((x) => x.id === e.id);
+  if (l && l.canvas.width === e.img.width && l.canvas.height === e.img.height) lctx(l.canvas).putImageData(e.img, 0, 0);
+  scheduleThumbs();
 }
 function doUndo() {
   if (tb) { cancelText(); return; }
   if (curve || poly) { curve = poly = null; clearOv(); return; }
   if (sel) { if (sel.floating) commitSel(); else { sel = null; renderSel(); } }
   if (!undo.length) return;
-  redo.push(snap());
-  restore(undo.pop());
+  const e = undo.pop(); redo.push(counterpart(e)); applyEntry(e);
   markDirty();
 }
 function doRedo() {
   commitAll();
   if (!redo.length) return;
-  undo.push(snap());
-  restore(redo.pop());
+  const e = redo.pop(); undo.push(counterpart(e)); applyEntry(e);
   markDirty();
 }
 
 // ---------- Lienzo ----------
+// Cambia el tamaño de todas las capas. Solo la capa de fondo se rellena; las demás quedan transparentes.
 function setCanvasSize(w, h, keep = true, fill = S.secondary) {
   w = clamp(Math.round(w), 1, 8000); h = clamp(Math.round(h), 1, 8000);
-  const old = keep ? copyCanvas(cv) : null;
-  cv.width = w; cv.height = h; ov.width = w; ov.height = h;
-  R.ink(ctx, fill); ctx.fillRect(0, 0, w, h); R.ink(ctx, "#000");
-  if (old) ctx.drawImage(old, 0, 0);
-  layout();
+  layers.forEach((l, i) => {
+    const c = l.canvas, old = keep ? copyCanvas(c) : null, x = lctx(c);
+    c.width = w; c.height = h;
+    if (i === 0) { R.ink(x, fill); x.fillRect(0, 0, w, h); R.ink(x, "#000"); }
+    if (old) x.drawImage(old, 0, 0);
+  });
+  ov.width = w; ov.height = h;
+  layout(); scheduleThumbs();
 }
+
+// ---------- Capas ----------
+const layersEl = document.createElement("div"); layersEl.id = "layers";
+cv.before(layersEl); layersEl.append(cv); cv.classList.add("layer");
+let layers = [{ id: 1, name: "Fondo", canvas: cv, opacity: 1, visible: true }], active = 0, layerSeq = 2;
+function layerCanvas(w, h) { const c = newCanvas(w, h); c.className = "layer"; return c; }
+function newLayer(w, h, name, fill) {
+  const id = layerSeq++, c = layerCanvas(w, h);
+  if (fill) { const x = lctx(c); R.ink(x, fill); x.fillRect(0, 0, w, h); R.ink(x, "#000"); }
+  return { id, name: name || `Capa ${id}`, canvas: c, opacity: 1, visible: true };
+}
+const bgFill = () => (active > 0 ? "transparent" : S.secondary); // las capas de arriba se borran a transparente
+function syncLayers() {
+  layersEl.replaceChildren(...layers.map((l) => l.canvas));
+  for (const l of layers) { l.canvas.style.opacity = l.opacity; l.canvas.style.visibility = l.visible ? "" : "hidden"; }
+}
+function setActive(i, rebuild) {
+  active = clamp(i, 0, layers.length - 1);
+  cv = layers[active].canvas; ctx = lctx(cv);
+  if (rebuild) { syncLayers(); layout(); }
+  renderLayers();
+}
+function resetLayers(w, h, fill) {
+  layerSeq = 1;
+  layers = [newLayer(w, h, "Fondo", fill)];
+  ov.width = w; ov.height = h;
+  setActive(0, true);
+}
+async function layerRecs() {
+  return Promise.all(layers.map(async (l, i) => {
+    let c = l.canvas;
+    if (i === active && sel && sel.floating) { c = copyCanvas(c); c.getContext("2d").drawImage(selcv, sel.x, sel.y); }
+    return { name: l.name, opacity: l.opacity, visible: l.visible, blob: await new Promise((res) => c.toBlob(res, "image/png")) };
+  }));
+}
+async function loadLayers(recs, act = 0) {
+  const cs = await Promise.all(recs.map((r) => blobToCanvas(r.blob)));
+  const W = cs[0].width, H = cs[0].height;
+  layerSeq = 1;
+  layers = recs.map((r, i) => { const l = newLayer(W, H, r.name); lctx(l.canvas).drawImage(cs[i], 0, 0); l.opacity = r.opacity ?? 1; l.visible = r.visible !== false; return l; });
+  ov.width = W; ov.height = H;
+  setActive(act, true);
+}
+function layerOp(fn) { commitAll(); pushUndoAll(); fn(); setActive(active, true); scheduleThumbs(); }
+function addLayer() { layerOp(() => { layers.splice(active + 1, 0, newLayer(cv.width, cv.height)); active++; }); }
+function dupLayer() {
+  layerOp(() => {
+    const src = layers[active], l = newLayer(cv.width, cv.height, `${src.name} copia`);
+    lctx(l.canvas).drawImage(src.canvas, 0, 0); l.opacity = src.opacity; l.visible = src.visible;
+    layers.splice(active + 1, 0, l); active++;
+  });
+}
+function delLayer() {
+  if (layers.length < 2) { msgBox("No se puede eliminar la única capa de la imagen."); return; }
+  layerOp(() => { layers.splice(active, 1); active = Math.min(active, layers.length - 1); });
+}
+function moveLayer(dir) {
+  const j = active + dir; if (j < 0 || j >= layers.length) return;
+  layerOp(() => { [layers[active], layers[j]] = [layers[j], layers[active]]; active = j; });
+}
+function mergeDown() {
+  if (active === 0) return;
+  layerOp(() => {
+    const top = layers[active], below = layers[active - 1], x = lctx(below.canvas);
+    if (top.visible) { x.globalAlpha = top.opacity; x.drawImage(top.canvas, 0, 0); x.globalAlpha = 1; }
+    layers.splice(active, 1); active--;
+  });
+}
+function flattenLayers() {
+  if (layers.length < 2) return;
+  layerOp(() => { const f = flatCanvas(), l = newLayer(f.width, f.height, "Fondo"); lctx(l.canvas).drawImage(f, 0, 0); layers = [l]; active = 0; });
+}
+async function renameLayer(i) {
+  const r = await dialog({
+    title: "Propiedades de la capa",
+    html: `<div class="row"><label for="lnName">Nombre:</label></div><div class="row"><input id="lnName" class="field" style="width:100%" value="${esc(layers[i].name)}"></div>`,
+    buttons: [["Aceptar", "ok", true], ["Cancelar", "cancel"]],
+    init: (b) => { const x = b.querySelector("#lnName"); x.focus(); x.select(); },
+  });
+  if (r.btn === "ok") { layers[i].name = r.body.querySelector("#lnName").value.trim().slice(0, 30) || layers[i].name; renderLayers(); markDirty(); }
+}
+// Panel de capas (debajo de las opciones de tamaño, dentro de la caja de herramientas)
+const lpanel = document.createElement("div"); lpanel.id = "layersPanel"; lpanel.className = "layers";
+lpanel.innerHTML = `<div class="lhead">Capas</div><div class="llist" id="llist"></div>
+  <div class="lname" id="lName"></div>
+  <div class="lop" title="Opacidad de la capa"><input type="range" id="lOp" min="0" max="100" step="1" aria-label="Opacidad de la capa"><span id="lOpV"></span></div>
+  <div class="lbtns">${[["lAdd", "Nueva capa", "lplus"], ["lDup", "Duplicar capa", "ldup"], ["lDel", "Eliminar capa", "ltrash"],
+    ["lUp", "Subir capa", "lup"], ["lDown", "Bajar capa", "ldown"], ["lMerge", "Combinar hacia abajo", "lmerge"]]
+    .map(([id, t, ic]) => `<button class="btn98 lbtn" id="${id}" title="${t}" aria-label="${t}">${iconImg(ic)}</button>`).join("")}</div>`;
+$("toolbox").append(lpanel);
+function renderLayers() {
+  lpanel.hidden = !S.layersOn;
+  if (!S.layersOn) return;
+  const list = $("llist");
+  list.innerHTML = layers.map((l, i) => `<div class="lrow${i === active ? " on" : ""}" data-i="${i}" title="${esc(l.name)} · ${Math.round(l.opacity * 100)}%">
+      <button class="leye" data-eye="${i}" aria-label="Mostrar u ocultar">${l.visible ? iconImg("leye") : ""}</button>
+      <canvas class="lth" width="40" height="30"></canvas></div>`).reverse().join("");
+  $("lName").textContent = layers[active].name;
+  $("lOp").value = Math.round(layers[active].opacity * 100);
+  $("lOpV").textContent = Math.round(layers[active].opacity * 100) + "%";
+  $("lDel").disabled = layers.length < 2; $("lMerge").disabled = active === 0;
+  $("lUp").disabled = active === layers.length - 1; $("lDown").disabled = active === 0;
+  drawThumbs();
+}
+function drawThumbs() {
+  if (!S.layersOn) return;
+  const th = $("llist").querySelectorAll(".lth");
+  th.forEach((t, k) => {
+    const l = layers[layers.length - 1 - k], x = t.getContext("2d"), W = l.canvas.width, H = l.canvas.height;
+    const sc = Math.min(t.width / W, t.height / H), w = W * sc, h = H * sc;
+    x.clearRect(0, 0, t.width, t.height);
+    x.drawImage(l.canvas, (t.width - w) / 2, (t.height - h) / 2, w, h);
+  });
+}
+let thumbTimer = 0;
+function scheduleThumbs() { clearTimeout(thumbTimer); thumbTimer = setTimeout(drawThumbs, 250); }
+$("llist").addEventListener("click", (e) => {
+  const eye = e.target.closest("[data-eye]");
+  if (eye) { const l = layers[+eye.dataset.eye]; l.visible = !l.visible; syncLayers(); renderLayers(); markDirty(); return; }
+  const row = e.target.closest(".lrow"); if (!row) return;
+  const i = +row.dataset.i;
+  if (i !== active) { commitAll(); setActive(i); }
+});
+$("llist").addEventListener("dblclick", (e) => { const row = e.target.closest(".lrow"); if (row) renameLayer(+row.dataset.i); });
+$("lOp").addEventListener("input", (e) => {
+  const v = +e.target.value / 100; layers[active].opacity = v;
+  layers[active].canvas.style.opacity = v; $("lOpV").textContent = e.target.value + "%"; markDirty();
+});
+$("lAdd").addEventListener("click", addLayer); $("lDup").addEventListener("click", dupLayer); $("lDel").addEventListener("click", delLayer);
+$("lUp").addEventListener("click", () => moveLayer(1)); $("lDown").addEventListener("click", () => moveLayer(-1)); $("lMerge").addEventListener("click", mergeDown);
+function toggleLayers() { S.layersOn = !S.layersOn; renderLayers(); saveSettings(); layout(); }
 function layout() {
   const z = S.zoom, W = cv.width * z, H = cv.height * z;
-  for (const c of [cv, ov]) { c.style.width = W + "px"; c.style.height = H + "px"; }
+  for (const c of [layersEl, ov, ...layers.map((l) => l.canvas)]) { c.style.width = W + "px"; c.style.height = H + "px"; }
+  for (const l of layers) l.canvas.style.imageRendering = z < 1 ? "auto" : "";
+  layersEl.style.backgroundSize = `${8 * z}px ${8 * z}px`;
+  stage.style.width = W + 8 + "px"; stage.style.height = H + 8 + "px";
   const g = $("grid");
   g.hidden = !(S.grid && z >= 4);
   g.style.width = W + "px"; g.style.height = H + "px"; g.style.backgroundSize = `${z}px ${z}px`;
@@ -170,7 +323,7 @@ function setZoom(z, center) {
   z = clamp(z, ZOOM_MIN, ZOOM_MAX);
   S.zoom = z;
   // Al reducir, suavizar; al ampliar, píxeles nítidos
-  for (const c of [cv, ov, selcv]) c.style.imageRendering = z < 1 ? "auto" : "";
+  for (const c of [ov, selcv]) c.style.imageRendering = z < 1 ? "auto" : "";
   if (typeof flash === "function" && z !== 1) flash(`Zoom: ${pct(z)}`);
   layout();
   ws.scrollLeft = cx * z - ws.clientWidth / 2;
@@ -211,12 +364,10 @@ const idb = (() => {
   };
 })();
 let saveTimer = 0;
-function markDirty() { S.dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 700); }
-function autosave() {
-  const c = copyCanvas(cv);
-  if (sel && sel.floating) c.getContext("2d").drawImage(selcv, sel.x, sel.y);
+function markDirty() { S.dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 700); scheduleThumbs(); }
+async function autosave() {
   saveSettings();
-  return new Promise((res) => c.toBlob((b) => { if (!b) return res(); idb.set("image", { blob: b, dirty: S.dirty }).catch(() => {}).then(res); }, "image/png"));
+  try { await idb.set("image", { layers: await layerRecs(), active, dirty: S.dirty }); } catch {}
 }
 
 // ---------- Selección ----------
@@ -265,7 +416,7 @@ function liftSel() {
   if (!sel || sel.floating) return;
   pushUndo();
   sel.src = selPixels();
-  R.ink(ctx, S.secondary);
+  R.ink(ctx, bgFill());
   if (sel.poly) R.polyFill(ctx, sel.poly, sel.x, sel.y); else ctx.fillRect(sel.x, sel.y, sel.w, sel.h);
   R.ink(ctx, "#000");
   sel.floating = true;
@@ -290,7 +441,7 @@ function deleteSel() {
   if (!sel) return;
   if (sel.floating) { sel = null; renderSel(); markDirty(); return; }
   pushUndo();
-  R.ink(ctx, S.secondary);
+  R.ink(ctx, bgFill());
   if (sel.poly) R.polyFill(ctx, sel.poly, sel.x, sel.y); else ctx.fillRect(sel.x, sel.y, sel.w, sel.h);
   R.ink(ctx, "#000");
   sel = null; renderSel();
@@ -316,7 +467,7 @@ async function pasteCanvas(c) {
       buttons: [["Sí", "yes", true], ["No", "no"], ["Cancelar", "cancel"]],
     });
     if (r.btn === "cancel") return;
-    if (r.btn === "yes") { pushUndo(); setCanvasSize(Math.max(cv.width, c.width), Math.max(cv.height, c.height)); }
+    if (r.btn === "yes") { pushUndoAll(); setCanvasSize(Math.max(cv.width, c.width), Math.max(cv.height, c.height)); }
   }
   setTool("select");
   pushUndo();
@@ -476,7 +627,12 @@ function colorErase(o, x0, y0, x1, y1) {
 }
 function pickAt(o) {
   if (o.x < 0 || o.y < 0 || o.x >= cv.width || o.y >= cv.height) return;
-  const d = ctx.getImageData(o.x, o.y, 1, 1).data, hex = R.rgbToHex(d[0], d[1], d[2], d[3]);
+  let hex = "transparent"; // el color que se ve: la capa visible más alta con algo pintado
+  for (let i = layers.length - 1; i >= 0; i--) {
+    if (!layers[i].visible) continue;
+    const d = lctx(layers[i].canvas).getImageData(o.x, o.y, 1, 1).data;
+    if (d[3] > 0) { hex = R.rgbToHex(d[0], d[1], d[2], d[3]); break; }
+  }
   if (o.btn === 2) S.secondary = hex; else S.primary = hex;
   renderColors();
 }
@@ -494,7 +650,7 @@ const H = {
     down(o) { pushUndo(); o.pushed = true; this.move(o, true); },
     move(o) {
       if (o.btn === 2) return colorErase(o, o.lx, o.ly, o.x, o.y);
-      R.ink(ctx, S.secondary);
+      R.ink(ctx, bgFill());
       R.line(ctx, o.lx, o.ly, o.x, o.y, R.squareSpans(ERASERS[S.opts.eraser]));
       R.ink(ctx, "#000");
     },
@@ -655,7 +811,7 @@ const H = {
     },
     up(o) {
       $("ghost").hidden = true; setSize();
-      if (o.w && (o.w !== cv.width || o.h !== cv.height)) { pushUndo(); setCanvasSize(o.w, o.h); }
+      if (o.w && (o.w !== cv.width || o.h !== cv.height)) { pushUndoAll(); setCanvasSize(o.w, o.h); }
     },
   },
 };
@@ -696,7 +852,7 @@ let pan = null;
 function cancelOp() {
   if (!op) return;
   clearInterval(op.timer);
-  if (op.pushed && undo.length) { ctx.putImageData(undo.pop(), 0, 0); }
+  if (op.pushed && undo.length) applyEntry(undo.pop());
   if (op.kind === "curve" && curve && curve.stage === 0) curve = null;
   if (op.kind === "poly" && poly) { poly.pts.pop(); if (poly.pts.length < 2) poly = null; }
   if (op.kind === "selnew" || op.kind === "textnew") renderSel();
@@ -1149,7 +1305,7 @@ async function fileNew() {
   if (!(await askSave())) return;
   const d = defaultSize();
   undo.length = 0; redo.length = 0;
-  setCanvasSize(d.w, d.h, false, "#ffffff");
+  resetLayers(d.w, d.h, "#ffffff");
   S.fileName = "sin título"; S.docName = null; setTitle();
   setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
   markDirty(); S.dirty = false;
@@ -1164,8 +1320,8 @@ async function openImage(blob, name, docName = null) {
   commitAll();
   if (!(await askSave())) return false;
   undo.length = 0; redo.length = 0;
-  setCanvasSize(c.width, c.height, false, "transparent");
-  ctx.drawImage(c, 0, 0);
+  resetLayers(c.width, c.height, null);
+  ctx.drawImage(c, 0, 0); scheduleThumbs();
   S.fileName = docName || (name || "imagen").replace(/\.[^.]+$/, "") || "imagen"; S.docName = docName; setTitle();
   const fit = Math.min(ws.clientWidth / c.width, ws.clientHeight / c.height);
   setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
@@ -1184,7 +1340,8 @@ function thumbOf(c, max = 96) {
 async function storeDoc(name) {
   const c = flatCanvas();
   const blob = await new Promise((res) => c.toBlob(res, "image/png"));
-  await idb.dSet(name, { name, blob, w: c.width, h: c.height, date: Date.now(), thumb: thumbOf(c) });
+  const multi = layers.length > 1 || layers.some((l) => l.opacity < 1 || !l.visible);
+  await idb.dSet(name, { name, blob, w: c.width, h: c.height, date: Date.now(), thumb: thumbOf(c), layers: multi ? await layerRecs() : null, active });
   S.fileName = name; S.docName = name; S.dirty = false; setTitle(); saveSettings(); autosave();
   flash(`Guardado en Dibujos: ${name}`);
   return true;
@@ -1261,7 +1418,18 @@ async function openExplorer() {
   if (r.btn !== "ok" || picked == null) return;
   const it = items[picked];
   restoreWinIfMin();
-  try { await openImage(it.blob, it.name, it.name); } catch { msgBox("No se pudo abrir el dibujo."); }
+  try { await openDoc(it); } catch { msgBox("No se pudo abrir el dibujo."); }
+}
+async function openDoc(it) {
+  if (!it.layers) return openImage(it.blob, it.name, it.name);
+  commitAll();
+  if (!(await askSave())) return false;
+  undo.length = 0; redo.length = 0;
+  await loadLayers(it.layers, it.active || 0);
+  S.fileName = it.name; S.docName = it.name; setTitle();
+  setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
+  markDirty(); S.dirty = false; saveSettings();
+  return true;
 }
 function restoreWinIfMin() { if ($("win").hidden) restoreWin(); }
 function pasteFrom() { $("filePasteFrom").value = ""; $("filePasteFrom").click(); }
@@ -1269,10 +1437,17 @@ $("filePasteFrom").addEventListener("change", async (e) => {
   const f = e.target.files[0]; if (!f) return;
   try { pasteCanvas(await blobToCanvas(f)); } catch { msgBox("Paint 98 no puede leer este archivo."); }
 });
+// Une las capas visibles (con su opacidad) en una sola imagen
 function flatCanvas() {
-  const c = copyCanvas(cv);
-  if (sel && sel.floating) c.getContext("2d").drawImage(selcv, sel.x, sel.y);
-  return c;
+  const out = newCanvas(cv.width, cv.height), x = out.getContext("2d");
+  layers.forEach((l, i) => {
+    if (!l.visible) return;
+    let src = l.canvas;
+    if (i === active && sel && sel.floating) { src = copyCanvas(src); src.getContext("2d").drawImage(selcv, sel.x, sel.y); }
+    x.globalAlpha = l.opacity; x.drawImage(src, 0, 0);
+  });
+  x.globalAlpha = 1;
+  return out;
 }
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 function hasTransparency(c) {
@@ -1374,24 +1549,27 @@ function stretchSkew(src, sx, sy, kx, ky, bg) {
   x.drawImage(st, 0, 0);
   return c;
 }
-function applyImage(fn, bgForWhole) { // aplica a la selección (si hay) o a toda la imagen
+// Aplica a la selección (si hay); si no, a toda la imagen (todas las capas) o solo a la capa activa
+function applyImage(fn, bgForWhole, activeOnly) {
   commitText(); finishCurve(); finishPoly();
   if (sel) {
     liftSel();
     sel.src = fn(sel.src, null); sel.w = sel.src.width; sel.h = sel.src.height; selDirty = true; renderSel(true); markDirty();
     return;
   }
-  pushUndo();
-  const out = fn(copyCanvas(cv), bgForWhole ? S.secondary : null);
-  setCanvasSize(out.width, out.height, false);
-  ctx.drawImage(out, 0, 0);
+  if (activeOnly) { pushUndo(); const out = fn(copyCanvas(cv), null); ctx.clearRect(0, 0, cv.width, cv.height); ctx.drawImage(out, 0, 0); scheduleThumbs(); return; }
+  pushUndoAll();
+  const outs = layers.map((l, i) => fn(copyCanvas(l.canvas), bgForWhole && i === 0 ? S.secondary : null));
+  layers.forEach((l, i) => { l.canvas.width = outs[i].width; l.canvas.height = outs[i].height; lctx(l.canvas).drawImage(outs[i], 0, 0); });
+  ov.width = outs[0].width; ov.height = outs[0].height;
+  layout(); scheduleThumbs();
 }
 function invertColors() {
   applyImage((src) => {
     const c = copyCanvas(src), x = c.getContext("2d"), img = x.getImageData(0, 0, c.width, c.height), d = img.data;
     for (let i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
     x.putImageData(img, 0, 0); return c;
-  });
+  }, false, true);
 }
 async function flipRotateDlg() {
   const r = await dialog({
@@ -1438,16 +1616,16 @@ async function attributesDlg() {
       <label class="rl"><input type="radio" name="u" checked>Píxeles</label></fieldset>`,
     buttons: [["Aceptar", "ok", true], ["Cancelar", "cancel"], ["Predeterminado", "def"]],
   });
-  if (r.btn === "def") { const d = defaultSize(); pushUndo(); setCanvasSize(d.w, d.h); return; }
+  if (r.btn === "def") { const d = defaultSize(); pushUndoAll(); setCanvasSize(d.w, d.h); return; }
   if (r.btn !== "ok") return;
   const w = parseInt(r.body.querySelector("#aw").value, 10), h = parseInt(r.body.querySelector("#ah").value, 10);
   if (!(w > 0 && h > 0)) return;
-  if (w !== cv.width || h !== cv.height) { pushUndo(); setCanvasSize(w, h); }
+  if (w !== cv.width || h !== cv.height) { pushUndoAll(); setCanvasSize(w, h); }
 }
 function clearImage() {
   commitText(); finishCurve(); finishPoly();
   if (sel) { deleteSel(); return; }
-  pushUndo(); R.ink(ctx, S.secondary); ctx.fillRect(0, 0, cv.width, cv.height); R.ink(ctx, "#000");
+  pushUndo(); R.ink(ctx, bgFill()); ctx.fillRect(0, 0, cv.width, cv.height); R.ink(ctx, "#000");
 }
 // Cambia el zoom dejando fijo el punto de la imagen que está bajo el dedo o el mouse
 function zoomAt(z, cx, cy) {
@@ -1532,6 +1710,7 @@ function helpDlg() {
       <p><b>Teclas + y −:</b> hacen más grueso o más delgado el trazo de la herramienta actual, incluso mientras estás dibujando (antes de soltar el clic).</p>
       <p><b>Transparente:</b> el cuadro con cuadrícula de la paleta pinta transparencia; al guardar como PNG esa zona queda transparente. En iPhone, guarda con "Guardar en Archivos": la app Fotos muestra lo transparente como blanco. El cuadro de colores (arcoíris) abre el selector de cualquier color.</p>
       <p><b>Herramientas y colores:</b> arrastra cada cuadro por su agarradera (las rayitas) para ponerlo a la izquierda, a la derecha, arriba o abajo. También desde el menú Ver.</p>
+      <p><b>Capas:</b> actívalas en Ver ▸ Capas. El panel aparece debajo de los tamaños: toca una capa para dibujar en ella, el ojo la muestra u oculta, la barra cambia su transparencia y los botones crean, duplican, eliminan, suben, bajan o combinan capas. Toca dos veces una capa para cambiarle el nombre. Al exportar PNG se unen todas las capas visibles.</p>
       <p><b>Temas:</b> toca el ícono de arriba a la izquierda para cambiar los colores de la ventana.</p>
       <p><b>Archivo:</b> "Guardar" guarda tu dibujo en la carpeta <b>Dibujos</b> de este dispositivo y "Abrir" muestra esa carpeta. "Importar imagen" trae una foto o imagen de la galería o de la computadora. "Exportar PNG" crea un archivo para compartir. Al minimizar, la carpeta Dibujos aparece en el escritorio.</p></div>`,
   });
@@ -1586,6 +1765,8 @@ const MENUS = [
     ["&Mostrar cuadrícula", "Ctrl+G", () => { S.grid = !S.grid; layout(); saveSettings(); }, { chk: S.grid, dis: S.zoom < 4 }],
     "-",
     ["&Ver mapa de bits", "Ctrl+F", viewBitmap],
+    "-",
+    ["Ca&pas", "Ctrl+K", toggleLayers, { chk: S.layersOn }],
   ]],
   ["&Imagen", () => [
     ["&Voltear o girar...", "Ctrl+R", flipRotateDlg],
@@ -1595,6 +1776,11 @@ const MENUS = [
     ["&Borrar imagen", "Ctrl+Mayús+N", clearImage],
     "-",
     ["&Dibujar opaco", "", () => setTransparent(!S.transparent), { chk: !S.transparent }],
+    ...(S.layersOn ? ["-",
+      ["&Nueva capa", "", addLayer], ["D&uplicar capa", "", dupLayer], ["E&liminar capa", "", delLayer, { dis: layers.length < 2 }],
+      ["&Subir capa", "", () => moveLayer(1), { dis: active === layers.length - 1 }], ["Ba&jar capa", "", () => moveLayer(-1), { dis: active === 0 }],
+      ["&Combinar hacia abajo", "", mergeDown, { dis: active === 0 }], ["Acoplar ima&gen", "", flattenLayers, { dis: layers.length < 2 }],
+      ["&Propiedades de la capa...", "", () => renameLayer(active)]] : []),
   ]],
   ["&Colores", () => [
     ["&Modificar colores...", "", () => editColor()],
@@ -1765,7 +1951,7 @@ document.addEventListener("keydown", (e) => {
     z: () => (e.shiftKey ? doRedo() : doUndo()), y: doRedo, x: cutSel, c: copySel, a: selectAll,
     t: () => toggleView("showTools"), l: () => toggleView("showColors"), g: () => { S.grid = !S.grid; layout(); },
     r: flipRotateDlg, w: stretchDlg, i: invertColors, e: attributesDlg, f: viewBitmap,
-    pageup: () => setZoom(1), pagedown: () => setZoom(4), 0: zoomFit,
+    k: toggleLayers, pageup: () => setZoom(1), pagedown: () => setZoom(4), 0: zoomFit,
     "+": () => setZoom(zoomStep(1)), "=": () => setZoom(zoomStep(1)), "-": () => setZoom(zoomStep(-1)),
   };
   if (k === "v") return; // lo maneja el evento "paste"
@@ -1830,17 +2016,19 @@ async function init() {
   let restored = false;
   try {
     const rec = await idb.get("image");
-    if (rec && rec.blob) {
+    if (rec && rec.layers && rec.layers.length) { await loadLayers(rec.layers, rec.active || 0); S.dirty = !!rec.dirty; restored = true; }
+    else if (rec && rec.blob) {
       const c = await blobToCanvas(rec.blob);
-      setCanvasSize(c.width, c.height, false, "transparent");
+      resetLayers(c.width, c.height, null);
       ctx.drawImage(c, 0, 0);
       S.dirty = !!rec.dirty;
       restored = true;
     }
   } catch {}
-  if (!restored) { const d = defaultSize(); setCanvasSize(d.w, d.h, false, "#ffffff"); }
+  if (!restored) { const d = defaultSize(); resetLayers(d.w, d.h, "#ffffff"); }
+  renderLayers();
   stage.className = "stage t-" + S.tool;
   setupUpdates();
 }
 init();
-window.__paint = { S, cv, setTool, renderColors, renderOptions, get sel() { return sel; } }; // para pruebas
+window.__paint = { S, get cv() { return cv; }, get layers() { return layers; }, get active() { return active; }, flatCanvas, setTool, renderColors, renderOptions, get sel() { return sel; } }; // para pruebas
