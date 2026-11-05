@@ -4,7 +4,7 @@ Programa de dibujo para el navegador con el estilo de un escritorio de 1998.
 Está hecho en JavaScript puro, sin instalar nada ni pasos de compilación, y
 pensado sobre todo para usarse en el celular en vertical.
 
-![Paint 98 con un dibujo de un luchador de artes marciales](docs/preview.png)
+<p align="center"><img src="docs/preview.png" alt="Paint 98 con su logo abierto en el lienzo" width="520"></p>
 
 **Úsalo aquí:** https://gabom88.github.io/Paint-98/
 
@@ -37,7 +37,9 @@ redondeado.
 - Paleta de 28 colores. Clic izquierdo elige el color de dibujo y clic derecho
   (o mantener presionado en el celular) el color de fondo.
 - **Color transparente** (el cuadro con cuadrícula): pinta transparencia. Al
-  guardar como PNG, esa zona queda transparente de verdad.
+  guardar como PNG, esa zona queda transparente de verdad. En iPhone conviene
+  elegir **"Guardar en Archivos"**: la app Fotos muestra lo transparente como
+  blanco.
 - **Modificar colores:** cuadrícula de colores básicos, 16 colores
   personalizados y un espectro con barra de luminosidad para elegir cualquier
   color (matiz, saturación y luminosidad, o rojo, verde y azul).
@@ -68,18 +70,13 @@ redondeado.
 
 ## Capturas
 
-| En el celular (tema Lila, colores a la izquierda) | Modificar colores |
+| En el celular (tema Lila) | Modificar colores |
 |---|---|
 | <img src="docs/celular.png" alt="Paint 98 en un celular" width="300"> | <img src="docs/colores.png" alt="Ventana Modificar colores" width="420"> |
 
 **Menú Imagen**
 
 ![Menú Imagen abierto](docs/menu.png)
-
-**El dibujo exportado como PNG** (hecho con la propia app: figuras, polígonos,
-líneas gruesas, aerógrafo, relleno y texto)
-
-![Dibujo exportado](docs/dibujo.png)
 
 ## Atajos de teclado
 

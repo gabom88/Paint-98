@@ -1152,8 +1152,24 @@ function flatCanvas() {
   if (sel && sel.floating) c.getContext("2d").drawImage(selcv, sel.x, sel.y);
   return c;
 }
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function hasTransparency(c) {
+  const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  for (let i = 3; i < d.length; i += 4) if (d[i] < 255) return true;
+  return false;
+}
+// En iPhone, la app Fotos muestra la transparencia como fondo blanco.
+function iosTransparencyTip() {
+  try { if (localStorage.getItem("paint98.tipFotos")) return; localStorage.setItem("paint98.tipFotos", "1"); } catch {}
+  dialog({
+    title: "Paint 98", icon: "warn",
+    html: `Tu imagen tiene zonas transparentes.<br><br>
+      La app <b>Fotos</b> del iPhone las muestra con fondo blanco y, según la versión, puede guardarlas sin transparencia.<br><br>
+      Para conservarla, en el menú de compartir elige <b>"Guardar en Archivos"</b> en lugar de "Guardar imagen".
+      Puedes comprobarlo abriendo el archivo aquí con Archivo ▸ Abrir: lo transparente se verá con cuadrícula.`,
+  });
+}
 async function saveBlob(blob, name) {
-  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   if (window.showSaveFilePicker) {
     try {
       const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: "Imagen PNG", accept: { "image/png": [".png"] } }] });
@@ -1186,6 +1202,7 @@ async function exportPNG(source) {
   const c = isSel ? source : flatCanvas();
   const blob = await new Promise((res) => c.toBlob(res, "image/png"));
   const ok = await saveBlob(blob, name.replace(/\.png$/i, "") + ".png");
+  if (ok && isIOS && hasTransparency(c)) iosTransparencyTip();
   if (ok && !isSel) { S.fileName = name.replace(/\.png$/i, ""); S.dirty = false; setTitle(); saveSettings(); autosave(); }
   return ok;
 }
@@ -1364,7 +1381,7 @@ function helpDlg() {
       <p><b>Selección:</b> arrastra para mover; usa los cuadritos para cambiar el tamaño. Ctrl + arrastrar copia; Mayús + arrastrar deja un rastro.</p>
       <p><b>Mayús</b> al dibujar: líneas rectas a 45°, cuadrados y círculos perfectos.</p>
       <p><b>Teclas + y −:</b> hacen más grueso o más delgado el trazo de la herramienta actual, incluso mientras estás dibujando (antes de soltar el clic).</p>
-      <p><b>Transparente:</b> el cuadro con cuadrícula de la paleta pinta transparencia; al guardar como PNG esa zona queda transparente. El cuadro de colores (arcoíris) abre el selector de cualquier color.</p>
+      <p><b>Transparente:</b> el cuadro con cuadrícula de la paleta pinta transparencia; al guardar como PNG esa zona queda transparente. En iPhone, guarda con "Guardar en Archivos": la app Fotos muestra lo transparente como blanco. El cuadro de colores (arcoíris) abre el selector de cualquier color.</p>
       <p><b>Cuadro de colores:</b> arrástralo por su agarradera (las rayitas) para ponerlo abajo, arriba o a la izquierda.</p>
       <p><b>Temas:</b> toca el ícono de arriba a la izquierda para cambiar los colores de la ventana.</p>
       <p><b>Archivo:</b> "Abrir o importar imagen" carga cualquier imagen; "Guardar como PNG" la exporta. Tu dibujo se guarda solo en este dispositivo.</p></div>`,
