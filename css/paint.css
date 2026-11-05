@@ -324,3 +324,24 @@ fieldset.g98 legend { padding: 0 3px; }
 .dlg .body { min-height: 0; }
 .ce-spec, .ce-lum { justify-self: start; align-self: start; }
 @media (pointer: coarse) { .cegrid { grid-template-columns: repeat(8, 26px); gap: 4px; } .cegrid .cc { width: 26px; height: 20px; } .cegrid { margin-bottom: 4px; } }
+
+/* ---------- Zonas donde se acomodan herramientas y colores ---------- */
+.dock { display: flex; flex: none; min-width: 0; min-height: 0; }
+.dock:empty { display: none; }
+.dock-top, .dock-bottom { flex-direction: column; }
+.dock-left, .dock-right { flex-direction: row; align-items: stretch; }
+.dock-right .toolbox, .dock-right .colorbox { margin-left: 2px; }
+/* Agarradera de la caja de herramientas en vertical (arriba, rayitas horizontales) */
+.toolbox:not(.horiz) .grip { flex: none; width: auto; height: 8px; align-self: stretch; margin: 0 0 3px;
+  background: linear-gradient(180deg, #fff 0 1px, var(--shadow) 1px 2px, transparent 2px 4px, #fff 4px 5px, var(--shadow) 5px 6px, transparent 6px) center/calc(100% - 6px) 6px no-repeat; }
+@media (pointer: coarse), (max-width: 700px) { .toolbox:not(.horiz) .grip { height: 14px; } }
+/* Caja de herramientas acostada (arriba o abajo) */
+.toolbox.horiz { flex-direction: row; flex-wrap: wrap; align-items: flex-start; overflow: visible; padding: 3px 2px; gap: 4px; }
+.toolbox.horiz .grip { align-self: stretch; margin: 0; }
+.toolbox.horiz .tools { grid-template-columns: repeat(8, var(--tb)); }
+.toolbox.horiz .optbox { margin-top: 0; width: auto; flex: 1 1 170px; min-width: 0; min-height: 0; height: calc(var(--tb) * 2);
+  flex-direction: row; flex-wrap: nowrap; justify-content: flex-start; align-items: center; overflow-x: auto; scrollbar-width: thin; }
+.toolbox.horiz .optgrid { width: auto; grid-template-columns: none !important; grid-auto-flow: column; grid-template-rows: repeat(2, auto); }
+.toolbox.horiz .optgrid + .optgrid { margin: 0 0 0 4px; padding: 0 0 0 4px; border-top: 0; border-left: 1px solid var(--shadow); }
+.toolbox.horiz .opt { width: auto; padding: 1px 4px; }
+.toolbox.horiz > .optbox > .opt { flex: none; }

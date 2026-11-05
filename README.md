@@ -44,7 +44,7 @@ redondeado.
   personalizados y un espectro con barra de luminosidad para elegir cualquier
   color (matiz, saturación y luminosidad, o rojo, verde y azul).
 - El cuadro de colores se arrastra por su agarradera para ponerlo **abajo,
-  arriba o a la izquierda**.
+  arriba, a la izquierda o a la derecha**.
 
 **Menús**
 
@@ -63,6 +63,9 @@ redondeado.
   cambian tocando el ícono de arriba a la izquierda.
 - El botón a la derecha del menú oculta las herramientas para dejar más
   espacio al dibujo.
+- La caja de herramientas también se arrastra por su agarradera (las rayitas)
+  para ponerla **a la izquierda, a la derecha, arriba o abajo**. Arriba o abajo
+  queda acostada, con sus opciones al lado. También se elige desde el menú Ver.
 - **Celular:** dos dedos mueven la imagen; si los separas o los juntas, la
   amplías o la reduces.
 - **Guardado automático:** el dibujo se guarda solo en el dispositivo, así que

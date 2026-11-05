@@ -58,16 +58,17 @@ const S = {
   primary: "#000000", secondary: "#ffffff", palette: DEFAULT_PALETTE.slice(), palIdx: 0,
   zoom: 1, grid: false, transparent: false,
   opts: { v: 3, pencil: 0, brush: 4, brushShape: 0, eraser: 3, air: 0, line: 0, fill: 0, zoom: 2 },
-  theme: "std", dock: "bottom", custom: Array(16).fill("#ffffff"),
+  theme: "std", dock: "bottom", toolDock: "left", custom: Array(16).fill("#ffffff"),
   showTools: true, showColors: true, showStatus: true, showFont: true,
   font: { family: "Arial", size: 16, bold: false, italic: false, underline: false },
   fileName: "sin título", dirty: false,
 };
 try {
   const saved = JSON.parse(localStorage.getItem("paint98.settings") || "{}");
-  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "custom"]) if (k in saved) S[k] = saved[k];
+  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "toolDock", "custom"]) if (k in saved) S[k] = saved[k];
   if (!THEMES.some((t) => t[0] === S.theme)) S.theme = "std";
-  if (!["bottom", "top", "left"].includes(S.dock)) S.dock = "bottom";
+  if (!["bottom", "top", "left", "right"].includes(S.dock)) S.dock = "bottom";
+  if (!["bottom", "top", "left", "right"].includes(S.toolDock)) S.toolDock = "left";
   if (!Array.isArray(S.custom) || S.custom.length !== 16) S.custom = Array(16).fill("#ffffff");
   if (saved.opts) {
     if (saved.opts.brushShape == null && saved.opts.brush != null) saved.opts.brushShape = Math.floor(saved.opts.brush / 3);
@@ -82,8 +83,8 @@ try {
 } catch {}
 function saveSettings() {
   try {
-    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, custom } = S;
-    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, custom }));
+    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom } = S;
+    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom }));
   } catch {}
 }
 
@@ -1022,40 +1023,58 @@ function colorEditor(initial) {
   return p.then((res) => (res.btn === "ok" ? hex() : null));
 }
 
-// ---------- Acomodar el cuadro de colores (abajo, arriba o izquierda) ----------
+// ---------- Acomodar los cuadros de herramientas y colores (arrastrando su agarradera) ----------
+const DOCKS = {};
+for (const [k, id] of [["top", "dockTop"], ["bottom", "dockBottom"], ["left", "dockLeft"], ["right", "dockRight"]]) {
+  const d = document.createElement("div"); d.id = id; d.className = "dock dock-" + k; DOCKS[k] = d;
+}
+$("main").before(DOCKS.top); $("main").after(DOCKS.bottom);
+$("main").prepend(DOCKS.left); $("main").append(DOCKS.right);
+const tbox = $("toolbox");
+{ const g = document.createElement("div"); g.className = "grip"; g.id = "tgrip"; g.title = "Arrastra para mover las herramientas (izquierda, derecha, arriba o abajo)"; tbox.prepend(g); }
 function applyDock() {
-  const main = $("main");
-  if (S.dock === "top") main.before(cbox);
-  else if (S.dock === "left") main.insertBefore(cbox, $("workspace"));
-  else main.after(cbox);
-  cbox.classList.toggle("vertical", S.dock === "left");
+  for (const d of Object.values(DOCKS)) d.replaceChildren();
+  // La caja de herramientas va pegada al borde; los colores, hacia el centro.
+  const place = (el, where) => DOCKS[where].append(el);
+  const order = { left: [tbox, cbox], top: [tbox, cbox], right: [cbox, tbox], bottom: [cbox, tbox] };
+  for (const where of ["left", "top", "right", "bottom"]) {
+    for (const el of order[where]) if ((el === tbox ? S.toolDock : S.dock) === where) place(el, where);
+  }
+  cbox.classList.toggle("vertical", S.dock === "left" || S.dock === "right");
+  tbox.classList.toggle("horiz", S.toolDock === "top" || S.toolDock === "bottom");
   layout();
 }
 function dockZone(x, y) {
-  const r = $("win").getBoundingClientRect(), m = $("main").getBoundingClientRect();
-  if (x < r.left + r.width * 0.28 && y > m.top && y < m.bottom) return "left";
-  return y < r.top + r.height * 0.4 ? "top" : "bottom";
+  const r = $("win").getBoundingClientRect(), fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
+  if (fx < 0.22) return "left";
+  if (fx > 0.78) return "right";
+  return fy < 0.45 ? "top" : "bottom";
 }
-$("cgrip").addEventListener("pointerdown", (e) => {
-  e.preventDefault();
-  const g = $("dockGhost"), grip = $("cgrip");
-  grip.setPointerCapture(e.pointerId);
-  const show = (ev) => {
-    const z = dockZone(ev.clientX, ev.clientY), m = $("main").getBoundingClientRect(), w = $("win").getBoundingClientRect();
-    const cw = cbox.classList.contains("vertical") ? 0 : cbox.offsetHeight, th = cw || 60;
-    const R2 = z === "left" ? { left: m.left + ($("toolbox").hidden ? 0 : $("toolbox").offsetWidth), top: m.top, width: COARSE ? 64 : 44, height: m.height }
-      : z === "top" ? { left: w.left + 3, top: m.top - (S.dock === "top" ? th : 0), width: w.width - 6, height: th }
-      : { left: w.left + 3, top: m.bottom - (S.dock === "bottom" ? 0 : th), width: w.width - 6, height: th };
-    Object.assign(g.style, { left: R2.left + "px", top: R2.top + "px", width: R2.width + "px", height: R2.height + "px" });
-    g.hidden = false;
-  };
-  show(e);
-  grip.onpointermove = show;
-  grip.onpointerup = grip.onpointercancel = (ev) => {
-    grip.onpointermove = grip.onpointerup = grip.onpointercancel = null; g.hidden = true;
-    if (ev.type === "pointerup") { S.dock = dockZone(ev.clientX, ev.clientY); applyDock(); saveSettings(); }
-  };
-});
+function dockDrag(grip, el, key) {
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const g = $("dockGhost");
+    grip.setPointerCapture(e.pointerId);
+    const show = (ev) => {
+      const z = dockZone(ev.clientX, ev.clientY), m = $("main").getBoundingClientRect(), w = $("win").getBoundingClientRect();
+      const side = z === "left" || z === "right";
+      const th = el === tbox ? (side ? tbox.offsetWidth || 60 : (COARSE ? 90 : 56)) : (side ? (COARSE ? 64 : 44) : (COARSE ? 60 : 44));
+      const R2 = side ? { left: z === "left" ? m.left : m.right - th, top: m.top, width: th, height: m.height }
+        : { left: w.left + 3, top: z === "top" ? m.top : m.bottom - th, width: w.width - 6, height: th };
+      Object.assign(g.style, { left: R2.left + "px", top: R2.top + "px", width: R2.width + "px", height: R2.height + "px" });
+      g.hidden = false;
+    };
+    show(e);
+    grip.onpointermove = show;
+    grip.onpointerup = grip.onpointercancel = (ev) => {
+      grip.onpointermove = grip.onpointerup = grip.onpointercancel = null; g.hidden = true;
+      if (ev.type === "pointerup") { S[key] = dockZone(ev.clientX, ev.clientY); applyDock(); saveSettings(); }
+    };
+  });
+}
+dockDrag($("cgrip"), cbox, "dock");
+dockDrag($("tgrip"), tbox, "toolDock");
+function setDock(key, where) { S[key] = where; applyDock(); saveSettings(); }
 
 // ---------- Temas de color ----------
 const THEME_COLORS = { std: "#000080", desert: "#008080", eggplant: "#602860", lilac: "#5a4eb1", brick: "#800000" };
@@ -1401,7 +1420,7 @@ function helpDlg() {
       <p><b>Mayús</b> al dibujar: líneas rectas a 45°, cuadrados y círculos perfectos.</p>
       <p><b>Teclas + y −:</b> hacen más grueso o más delgado el trazo de la herramienta actual, incluso mientras estás dibujando (antes de soltar el clic).</p>
       <p><b>Transparente:</b> el cuadro con cuadrícula de la paleta pinta transparencia; al guardar como PNG esa zona queda transparente. En iPhone, guarda con "Guardar en Archivos": la app Fotos muestra lo transparente como blanco. El cuadro de colores (arcoíris) abre el selector de cualquier color.</p>
-      <p><b>Cuadro de colores:</b> arrástralo por su agarradera (las rayitas) para ponerlo abajo, arriba o a la izquierda.</p>
+      <p><b>Herramientas y colores:</b> arrastra cada cuadro por su agarradera (las rayitas) para ponerlo a la izquierda, a la derecha, arriba o abajo. También desde el menú Ver.</p>
       <p><b>Temas:</b> toca el ícono de arriba a la izquierda para cambiar los colores de la ventana.</p>
       <p><b>Archivo:</b> "Abrir o importar imagen" carga cualquier imagen; "Guardar como PNG" la exporta. Tu dibujo se guarda solo en este dispositivo.</p></div>`,
   });
@@ -1437,9 +1456,10 @@ const MENUS = [
     ["Cuadro de &herramientas", "Ctrl+T", () => toggleView("showTools"), { chk: S.showTools }],
     ["Cuadro de &colores", "Ctrl+L", () => toggleView("showColors"), { chk: S.showColors }],
     ["&Barra de estado", "", () => toggleView("showStatus"), { chk: S.showStatus }],
-    ["Colores &abajo", "", () => { S.dock = "bottom"; applyDock(); saveSettings(); }, { chk: S.dock === "bottom" }],
-    ["Colores a&rriba", "", () => { S.dock = "top"; applyDock(); saveSettings(); }, { chk: S.dock === "top" }],
-    ["Colores a la &izquierda", "", () => { S.dock = "left"; applyDock(); saveSettings(); }, { chk: S.dock === "left" }],
+    "-",
+    ...[["left", "a la izquierda"], ["right", "a la derecha"], ["top", "arriba"], ["bottom", "abajo"]].map(([k, t]) => [`Herramientas ${t}`, "", () => setDock("toolDock", k), { chk: S.toolDock === k }]),
+    "-",
+    ...[["left", "a la izquierda"], ["right", "a la derecha"], ["top", "arriba"], ["bottom", "abajo"]].map(([k, t]) => [`Colores ${t}`, "", () => setDock("dock", k), { chk: S.dock === k }]),
     ["Barra de herramientas &Texto", "", () => { S.showFont = !S.showFont; $("fontbar").hidden = !(S.showFont && tb); saveSettings(); }, { chk: S.showFont, dis: S.tool !== "text" }],
     "-",
     ["Zoom &normal", "Ctrl+RePág", () => setZoom(1), { chk: S.zoom === 1 }],
