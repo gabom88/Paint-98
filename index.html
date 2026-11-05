@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Paint 98</title>
+<meta name="description" content="Programa de dibujo con estilo de escritorio de 1998.">
+<meta name="theme-color" content="#000080">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Paint 98">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/paint.css">
+</head>
+<body>
+<div id="win" class="window">
+  <div class="titlebar" id="titlebar">
+    <img class="ticon" id="sysIcon" src="icons/logo-32.png" alt="Menú de la ventana" title="Temas de color">
+    <span class="ttext" id="title">sin título - Paint 98</span>
+    <div class="tbtns">
+      <button class="tbtn" id="btnMin" aria-label="Minimizar"></button>
+      <button class="tbtn" id="btnMax" aria-label="Maximizar"></button>
+      <button class="tbtn close" id="btnClose" aria-label="Cerrar"></button>
+    </div>
+  </div>
+  <div class="menubar" id="menubar">
+    <div class="menus" id="menus"></div>
+    <button class="btn98 toggletools" id="toggleTools" title="Mostrar u ocultar herramientas (Ctrl+T)"></button>
+  </div>
+  <div class="main" id="main">
+    <div class="toolbox" id="toolbox">
+      <div class="tools" id="tools"></div>
+      <div class="optbox" id="optbox"></div>
+    </div>
+    <div class="workspace" id="workspace">
+      <div class="stage" id="stage">
+        <canvas id="cv"></canvas>
+        <canvas id="ov"></canvas>
+        <div id="grid"></div>
+        <div id="selbox" hidden>
+          <canvas id="selcv"></canvas>
+          <i class="sh" data-h="nw"></i><i class="sh" data-h="n"></i><i class="sh" data-h="ne"></i>
+          <i class="sh" data-h="w"></i><i class="sh" data-h="e"></i>
+          <i class="sh" data-h="sw"></i><i class="sh" data-h="s"></i><i class="sh" data-h="se"></i>
+        </div>
+        <textarea id="textedit" hidden spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <i class="ch" data-c="e"></i><i class="ch" data-c="s"></i><i class="ch" data-c="se"></i>
+        <div id="ghost" hidden></div>
+        <div id="ecur" hidden></div>
+      </div>
+    </div>
+  </div>
+  <div class="colorbox" id="colorbox">
+    <div class="grip" id="cgrip" title="Arrastra para mover el cuadro de colores (abajo, arriba o a la izquierda)"></div>
+    <div class="curcol" id="curcol" title="Toca para intercambiar colores">
+      <div class="sec" id="secSw"></div><div class="pri" id="priSw"></div>
+    </div>
+    <div class="specials" id="specials">
+      <div class="sw tr" data-i="T" title="Transparente"></div>
+      <button class="sw more" id="swMore" title="Más colores..." aria-label="Más colores"></button>
+    </div>
+    <div class="palette" id="palette"></div>
+  </div>
+  <div class="statusbar" id="statusbar">
+    <div class="st st-msg" id="stMsg"></div>
+    <div class="st st-pos" id="stPos"></div>
+    <div class="st st-size" id="stSize"></div>
+  </div>
+</div>
+
+<div class="window fontbar" id="fontbar" hidden>
+  <div class="titlebar small"><span class="ttext">Fuentes</span>
+    <div class="tbtns"><button class="tbtn close" id="fontClose" aria-label="Cerrar"></button></div></div>
+  <div class="fontrow">
+    <select id="fFamily" class="field">
+      <option>Arial</option><option>Times New Roman</option><option>Courier New</option>
+      <option>Comic Sans MS</option><option>Georgia</option><option>Verdana</option>
+      <option>Tahoma</option><option>Impact</option><option>Trebuchet MS</option>
+      <option value="monospace">Monoespaciada</option><option value="serif">Serif</option>
+      <option value="sans-serif">Sans serif</option>
+    </select>
+    <select id="fSize" class="field small"></select>
+    <button class="btn98 fbtn" id="fBold"><b>N</b></button>
+    <button class="btn98 fbtn" id="fItalic"><i>K</i></button>
+    <button class="btn98 fbtn" id="fUnder"><u>S</u></button>
+  </div>
+</div>
+
+<div id="dropdown" class="dropdown" hidden></div>
+<div id="dockGhost" hidden></div>
+<div id="modal" class="modal" hidden></div>
+<div id="viewbmp" hidden></div>
+<div id="printArea"></div>
+<input type="file" id="fileOpen" accept="image/*" class="hiddenInput">
+<input type="file" id="filePasteFrom" accept="image/*" class="hiddenInput">
+<input type="color" id="colorPick" class="hiddenInput">
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
