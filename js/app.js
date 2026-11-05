@@ -58,14 +58,14 @@ const S = {
   primary: "#000000", secondary: "#ffffff", palette: DEFAULT_PALETTE.slice(), palIdx: 0,
   zoom: 1, grid: false, transparent: false,
   opts: { v: 3, pencil: 0, brush: 4, brushShape: 0, eraser: 3, air: 0, line: 0, fill: 0, zoom: 2 },
-  theme: "std", dock: "bottom", toolDock: "left", custom: Array(16).fill("#ffffff"),
+  theme: "std", dock: "bottom", toolDock: "left", docName: null, custom: Array(16).fill("#ffffff"),
   showTools: true, showColors: true, showStatus: true, showFont: true,
   font: { family: "Arial", size: 16, bold: false, italic: false, underline: false },
   fileName: "sin título", dirty: false,
 };
 try {
   const saved = JSON.parse(localStorage.getItem("paint98.settings") || "{}");
-  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "toolDock", "custom"]) if (k in saved) S[k] = saved[k];
+  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "toolDock", "custom", "docName"]) if (k in saved) S[k] = saved[k];
   if (!THEMES.some((t) => t[0] === S.theme)) S.theme = "std";
   if (!["bottom", "top", "left", "right"].includes(S.dock)) S.dock = "bottom";
   if (!["bottom", "top", "left", "right"].includes(S.toolDock)) S.toolDock = "left";
@@ -83,8 +83,8 @@ try {
 } catch {}
 function saveSettings() {
   try {
-    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom } = S;
-    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom }));
+    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName } = S;
+    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName }));
   } catch {}
 }
 
@@ -189,15 +189,25 @@ function visibleOrigin() {
 const idb = (() => {
   let p;
   const open = () => (p ||= new Promise((res, rej) => {
-    const r = indexedDB.open("paint98", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    const r = indexedDB.open("paint98", 2);
+    r.onupgradeneeded = () => {
+      if (!r.result.objectStoreNames.contains("kv")) r.result.createObjectStore("kv");
+      if (!r.result.objectStoreNames.contains("drawings")) r.result.createObjectStore("drawings");
+    };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }));
-  const tx = (mode, fn) => open().then((db) => new Promise((res, rej) => {
-    const t = db.transaction("kv", mode); const q = fn(t.objectStore("kv"));
+  const tx = (mode, fn, store = "kv") => open().then((db) => new Promise((res, rej) => {
+    const t = db.transaction(store, mode); const q = fn(t.objectStore(store));
     t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error);
   }));
-  return { get: (k) => tx("readonly", (s) => s.get(k)), set: (k, v) => tx("readwrite", (s) => s.put(v, k)) };
+  return {
+    get: (k) => tx("readonly", (s) => s.get(k)), set: (k, v) => tx("readwrite", (s) => s.put(v, k)),
+    // Carpeta "Dibujos": dibujos guardados en este dispositivo
+    dGet: (k) => tx("readonly", (s) => s.get(k), "drawings"),
+    dSet: (k, v) => tx("readwrite", (s) => s.put(v, k), "drawings"),
+    dDel: (k) => tx("readwrite", (s) => s.delete(k), "drawings"),
+    dAll: () => tx("readonly", (s) => s.getAll(), "drawings"),
+  };
 })();
 let saveTimer = 0;
 function markDirty() { S.dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 700); }
@@ -1135,7 +1145,7 @@ async function askSave() { // true = seguir, false = cancelar
     buttons: [["Sí", "yes", true], ["No", "no"], ["Cancelar", "cancel"]],
   });
   if (r.btn === "cancel") return false;
-  if (r.btn === "yes") return await exportPNG();
+  if (r.btn === "yes") return await saveDoc();
   return true;
 }
 function defaultSize() {
@@ -1147,28 +1157,120 @@ async function fileNew() {
   const d = defaultSize();
   undo.length = 0; redo.length = 0;
   setCanvasSize(d.w, d.h, false, "#ffffff");
-  S.fileName = "sin título"; setTitle();
+  S.fileName = "sin título"; S.docName = null; setTitle();
   setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
   markDirty(); S.dirty = false;
 }
-function fileOpen() { $("fileOpen").value = ""; $("fileOpen").click(); }
+function fileImport() { $("fileOpen").value = ""; $("fileOpen").click(); }
 $("fileOpen").addEventListener("change", async (e) => {
   const f = e.target.files[0]; if (!f) return;
   try { await openImage(f, f.name); } catch { msgBox("Paint 98 no puede leer este archivo.<br>No es un archivo de imagen válido o su formato no es compatible."); }
 });
-async function openImage(blob, name) {
+async function openImage(blob, name, docName = null) {
   const c = await blobToCanvas(blob);
   commitAll();
-  if (!(await askSave())) return;
+  if (!(await askSave())) return false;
   undo.length = 0; redo.length = 0;
   setCanvasSize(c.width, c.height, false, "transparent");
   ctx.drawImage(c, 0, 0);
-  S.fileName = (name || "imagen").replace(/\.[^.]+$/, "") || "imagen"; setTitle();
+  S.fileName = docName || (name || "imagen").replace(/\.[^.]+$/, "") || "imagen"; S.docName = docName; setTitle();
   const fit = Math.min(ws.clientWidth / c.width, ws.clientHeight / c.height);
   setZoom(1, { x: 0, y: 0 }); ws.scrollLeft = 0; ws.scrollTop = 0;
   void fit;
   markDirty(); S.dirty = false; saveSettings();
+  return true;
 }
+
+// ---------- Carpeta "Dibujos" (guardar y abrir en este dispositivo) ----------
+const cleanName = (n) => n.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
+function thumbOf(c, max = 96) {
+  const k = Math.min(1, max / Math.max(c.width, c.height)), t = newCanvas(Math.round(c.width * k), Math.round(c.height * k));
+  const x = t.getContext("2d"); x.imageSmoothingEnabled = k < 1; x.drawImage(c, 0, 0, t.width, t.height);
+  return t.toDataURL("image/png");
+}
+async function storeDoc(name) {
+  const c = flatCanvas();
+  const blob = await new Promise((res) => c.toBlob(res, "image/png"));
+  await idb.dSet(name, { name, blob, w: c.width, h: c.height, date: Date.now(), thumb: thumbOf(c) });
+  S.fileName = name; S.docName = name; S.dirty = false; setTitle(); saveSettings(); autosave();
+  flash(`Guardado en Dibujos: ${name}`);
+  return true;
+}
+async function saveDoc() { // Guardar: si ya tiene nombre en Dibujos, lo reemplaza
+  commitText();
+  if (S.docName) { try { return await storeDoc(S.docName); } catch { msgBox("No se pudo guardar. Puede que no haya espacio en el dispositivo."); return false; } }
+  return saveDocAs();
+}
+async function saveDocAs() {
+  commitText();
+  const r = await dialog({
+    title: "Guardar como",
+    html: `<div class="row">Guardar en: ${iconImg("folder", "inl")} <b>Dibujos</b></div>
+      <div class="row"><label for="dName">Nombre de archivo:</label></div>
+      <div class="row"><input id="dName" class="field" style="width:100%" value="${esc(S.docName || (S.fileName === "sin título" ? "" : S.fileName))}" placeholder="Mi dibujo"></div>`,
+    buttons: [["Guardar", "ok", true], ["Cancelar", "cancel"]],
+    init: (b) => { const i = b.querySelector("#dName"); i.focus(); i.select(); },
+  });
+  if (r.btn !== "ok") return false;
+  const name = cleanName(r.body.querySelector("#dName").value) || "sin título";
+  try {
+    if (name !== S.docName && (await idb.dGet(name))) {
+      const q = await dialog({ title: "Guardar como", icon: "warn", html: `${esc(name)} ya existe.<br>¿Desea reemplazarlo?`, buttons: [["Sí", "yes", true], ["No", "no"]] });
+      if (q.btn !== "yes") return saveDocAs();
+    }
+    return await storeDoc(name);
+  } catch { msgBox("No se pudo guardar. Puede que no haya espacio en el dispositivo."); return false; }
+}
+// Explorador de la carpeta "Dibujos"
+async function openExplorer() {
+  commitText();
+  let items = [];
+  try { items = (await idb.dAll()) || []; } catch {}
+  items.sort((a, b) => b.date - a.date);
+  let picked = null;
+  const fmt = (d) => new Date(d).toLocaleDateString("es", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const grid = () => items.length ? items.map((it, i) => `<button class="xitem" data-i="${i}" title="${esc(it.name)} · ${it.w} x ${it.h} · ${fmt(it.date)}">
+      <span class="xthumb"><img src="${it.thumb}" alt=""></span><span class="xname">${esc(it.name)}</span></button>`).join("")
+    : `<div class="xempty">Esta carpeta está vacía.<br>Usa Archivo ▸ Guardar para guardar tu dibujo aquí.</div>`;
+  let body;
+  const refresh = () => {
+    body.querySelector(".xgrid").innerHTML = grid();
+    body.querySelector(".xstatus").textContent = `${items.length} objeto${items.length === 1 ? "" : "s"}`;
+    picked = null;
+  };
+  const p = dialog({
+    title: "Dibujos", cls: "wide explorer",
+    html: `<div class="xbar"><span>Dirección</span><div class="field xaddr">${iconImg("folder", "inl")} Dibujos</div></div>
+      <div class="xgrid"></div><div class="xstatus"></div>`,
+    buttons: [["Abrir", "ok", true], ["Eliminar", "del"], ["Cancelar", "cancel"]],
+    keep: (btn) => btn === "del" || (btn === "ok" && picked == null),
+    init(bd) {
+      body = bd; refresh();
+      let last = { i: -1, t: 0 };
+      bd.addEventListener("click", (e) => {
+        const it = e.target.closest(".xitem"); if (!it) return;
+        const i = +it.dataset.i;
+        bd.querySelectorAll(".xitem").forEach((el) => el.classList.toggle("sel", el === it));
+        picked = i;
+        if (last.i === i && e.timeStamp - last.t < 450) bd.closest(".dlg").querySelector('[data-b="ok"]').click();
+        last = { i, t: e.timeStamp };
+      });
+    },
+    onButton: async (btn) => {
+      if (btn === "del" && picked != null) {
+        const it = items[picked];
+        const q = await dialog({ title: "Confirmar eliminación", icon: "warn", html: `¿Está seguro de que desea eliminar "${esc(it.name)}"?`, buttons: [["Sí", "yes", true], ["No", "no"]], nested: true });
+        if (q.btn === "yes") { await idb.dDel(it.name).catch(() => {}); items.splice(picked, 1); refresh(); if (S.docName === it.name) S.docName = null; }
+      }
+    },
+  });
+  const r = await p;
+  if (r.btn !== "ok" || picked == null) return;
+  const it = items[picked];
+  restoreWinIfMin();
+  try { await openImage(it.blob, it.name, it.name); } catch { msgBox("No se pudo abrir el dibujo."); }
+}
+function restoreWinIfMin() { if ($("win").hidden) restoreWin(); }
 function pasteFrom() { $("filePasteFrom").value = ""; $("filePasteFrom").click(); }
 $("filePasteFrom").addEventListener("change", async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -1216,7 +1318,7 @@ async function saveBlob(blob, name) {
 async function exportPNG(source) {
   const isSel = source instanceof HTMLCanvasElement;
   const r = await dialog({
-    title: isSel ? "Copiar en" : "Guardar como",
+    title: isSel ? "Copiar en" : "Exportar PNG",
     html: `<div class="row"><label for="dName">Nombre de archivo:</label></div>
       <div class="row"><input id="dName" class="field" style="width:100%" value="${esc(isSel ? "selección" : S.fileName)}"></div>
       <div class="row"><label>Guardar como tipo:</label></div>
@@ -1230,7 +1332,7 @@ async function exportPNG(source) {
   const blob = await new Promise((res) => c.toBlob(res, "image/png"));
   const ok = await saveBlob(blob, name.replace(/\.png$/i, "") + ".png");
   if (ok && isIOS && hasTransparency(c)) iosTransparencyTip();
-  if (ok && !isSel) { S.fileName = name.replace(/\.png$/i, ""); S.dirty = false; setTitle(); saveSettings(); autosave(); }
+  if (ok && !isSel && !S.docName) { S.fileName = name.replace(/\.png$/i, ""); setTitle(); saveSettings(); }
   return ok;
 }
 async function shareImg() {
@@ -1377,17 +1479,25 @@ async function zoomDlg() {
 }
 
 // ---------- Diálogos ----------
-function dialog({ title, html, icon: ic, buttons = [["Aceptar", "ok", true]], init, cls = "" }) {
+function dialog({ title, html, icon: ic, buttons = [["Aceptar", "ok", true]], init, cls = "", keep, onButton, nested }) {
   return new Promise((resolve) => {
-    const m = $("modal");
+    let m = $("modal");
+    if (nested || !m.hidden) { m = document.createElement("div"); m.className = "modal"; m.style.zIndex = 110; document.body.append(m); m.dataset.tmp = "1"; }
     m.innerHTML = `<div class="window dlg ${cls}" role="dialog" aria-label="${esc(title)}">
       <div class="titlebar"><span class="ttext">${esc(title)}</span><div class="tbtns"><button class="tbtn close" data-b="cancel" aria-label="Cerrar"></button></div></div>
       <div class="body">${ic ? `<div class="msgrow">${iconImg(ic)}<div>${html}</div></div>` : html}</div>
       <div class="btns">${buttons.map(([l, v, d]) => `<button class="btn98${d ? " def" : ""}" data-b="${v}">${l}</button>`).join("")}</div></div>`;
     m.hidden = false;
     const body = m.querySelector(".body");
-    const done = (btn) => { m.hidden = true; m.onclick = null; document.removeEventListener("keydown", key, true); resolve({ btn, body }); m.innerHTML = ""; };
+    const done = (btn) => {
+      if (onButton) onButton(btn, body);
+      if (keep && keep(btn)) return;
+      m.hidden = true; m.onclick = null; document.removeEventListener("keydown", key, true); resolve({ btn, body }); m.innerHTML = "";
+      if (m.dataset.tmp) m.remove();
+    };
     const key = (e) => {
+      const open = [...document.querySelectorAll(".modal:not([hidden])")];
+      if (open[open.length - 1] !== m) return; // solo responde la ventana de más arriba
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(buttons.some((b) => b[1] === "cancel") ? "cancel" : buttons[0][1]); }
       else if (e.key === "Enter" && e.target.tagName !== "BUTTON") { e.preventDefault(); e.stopPropagation(); done((buttons.find((b) => b[2]) || buttons[0])[1]); }
     };
@@ -1422,7 +1532,7 @@ function helpDlg() {
       <p><b>Transparente:</b> el cuadro con cuadrícula de la paleta pinta transparencia; al guardar como PNG esa zona queda transparente. En iPhone, guarda con "Guardar en Archivos": la app Fotos muestra lo transparente como blanco. El cuadro de colores (arcoíris) abre el selector de cualquier color.</p>
       <p><b>Herramientas y colores:</b> arrastra cada cuadro por su agarradera (las rayitas) para ponerlo a la izquierda, a la derecha, arriba o abajo. También desde el menú Ver.</p>
       <p><b>Temas:</b> toca el ícono de arriba a la izquierda para cambiar los colores de la ventana.</p>
-      <p><b>Archivo:</b> "Abrir o importar imagen" carga cualquier imagen; "Guardar como PNG" la exporta. Tu dibujo se guarda solo en este dispositivo.</p></div>`,
+      <p><b>Archivo:</b> "Guardar" guarda tu dibujo en la carpeta <b>Dibujos</b> de este dispositivo y "Abrir" muestra esa carpeta. "Importar imagen" trae una foto o imagen de la galería o de la computadora. "Exportar PNG" crea un archivo para compartir. Al minimizar, la carpeta Dibujos aparece en el escritorio.</p></div>`,
   });
 }
 
@@ -1431,8 +1541,12 @@ const canShare = !!(navigator.canShare && navigator.canShare({ files: [new File(
 const MENUS = [
   ["&Archivo", () => [
     ["&Nuevo", "Ctrl+N", fileNew],
-    ["&Abrir o importar imagen...", "Ctrl+O", fileOpen],
-    ["&Guardar como PNG...", "Ctrl+S", () => { commitText(); exportPNG(); }],
+    ["&Abrir...", "Ctrl+O", openExplorer],
+    ["Im&portar imagen...", "Ctrl+Mayús+O", fileImport],
+    "-",
+    ["&Guardar", "Ctrl+S", saveDoc],
+    ["Guardar c&omo...", "", saveDocAs],
+    ["&Exportar PNG...", "Ctrl+Mayús+S", () => { commitText(); exportPNG(); }],
     canShare && ["&Compartir imagen...", "", shareImg],
     "-",
     ["&Imprimir...", "Ctrl+P", printImg],
@@ -1595,11 +1709,14 @@ function minimize() {
     tbar = document.createElement("div"); tbar.id = "taskbar";
     tbar.innerHTML = `<button class="btn98" id="tbStart"><img class="px" src="icons/logo-32.png" alt="">Inicio</button>
       <button class="btn98 task" id="tbTask"><img class="px" src="icons/logo-32.png" alt="">${esc(S.fileName)} - Paint 98</button>`;
-    const di = document.createElement("button"); di.className = "deskicon"; di.id = "deskIcon";
-    di.innerHTML = `<img src="icons/icon-192.png" alt=""><span>Paint 98</span>`;
-    document.body.append(tbar, di);
-    for (const el of [tbar.querySelector("#tbTask"), tbar.querySelector("#tbStart"), di]) el.addEventListener("click", restoreWin);
+    const desk = document.createElement("div"); desk.id = "deskIcon";
+    desk.innerHTML = `<button class="deskicon" id="diPaint"><img src="icons/icon-192.png" alt=""><span>Paint 98</span></button>
+      <button class="deskicon" id="diFolder"><img class="px" src="${icon("folder")}" alt=""><span>Dibujos</span></button>`;
+    document.body.append(tbar, desk);
+    for (const el of [tbar.querySelector("#tbTask"), tbar.querySelector("#tbStart"), desk.querySelector("#diPaint")]) el.addEventListener("click", restoreWin);
+    desk.querySelector("#diFolder").addEventListener("click", openExplorer);
   }
+  tbar.querySelector("#tbTask").lastChild.textContent = `${S.fileName} - Paint 98`;
   tbar.hidden = false; $("deskIcon").hidden = false;
 }
 function restoreWin() { $("taskbar").hidden = true; $("deskIcon").hidden = true; $("win").hidden = false; layout(); }
@@ -1642,7 +1759,8 @@ document.addEventListener("keydown", (e) => {
   if (!mod) return;
   const k = e.key.toLowerCase();
   const map = {
-    n: () => (e.shiftKey ? clearImage() : fileNew()), o: fileOpen, s: () => { commitText(); exportPNG(); }, p: printImg,
+    n: () => (e.shiftKey ? clearImage() : fileNew()), o: () => (e.shiftKey ? fileImport() : openExplorer()),
+    s: () => (e.shiftKey ? (commitText(), exportPNG()) : saveDoc()), p: printImg,
     z: () => (e.shiftKey ? doRedo() : doUndo()), y: doRedo, x: cutSel, c: copySel, a: selectAll,
     t: () => toggleView("showTools"), l: () => toggleView("showColors"), g: () => { S.grid = !S.grid; layout(); },
     r: flipRotateDlg, w: stretchDlg, i: invertColors, e: attributesDlg, f: viewBitmap,

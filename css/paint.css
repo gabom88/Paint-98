@@ -345,3 +345,24 @@ fieldset.g98 legend { padding: 0 3px; }
 .toolbox.horiz .optgrid + .optgrid { margin: 0 0 0 4px; padding: 0 0 0 4px; border-top: 0; border-left: 1px solid var(--shadow); }
 .toolbox.horiz .opt { width: auto; padding: 1px 4px; }
 .toolbox.horiz > .optbox > .opt { flex: none; }
+
+/* ---------- Explorador "Dibujos" ---------- */
+img.px.inl { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; }
+.dlg.explorer { width: min(560px, calc(100vw - 24px)); }
+.xbar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.xaddr { flex: 1; display: flex; align-items: center; height: 22px; }
+.xgrid { background: #fff; box-shadow: var(--sunken); padding: 8px; min-height: 220px; max-height: min(52dvh, 420px); overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; align-content: start; }
+.xitem { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; padding: 4px 2px; cursor: default; }
+.xthumb { width: 80px; height: 80px; display: grid; place-items: center; background: repeating-conic-gradient(#fff 0 25%, #e0e0e0 0 50%) 0 0 / 8px 8px; outline: 1px solid #c0c0c0; }
+.xthumb img { max-width: 80px; max-height: 80px; display: block; image-rendering: auto; }
+.xname { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.xitem.sel .xname { background: var(--title1); color: #fff; outline: 1px dotted #ff0; }
+.xitem.sel .xthumb { filter: brightness(.75) sepia(1) hue-rotate(190deg) saturate(3); }
+.xempty { grid-column: 1 / -1; color: var(--shadow); text-align: center; padding: 50px 10px; line-height: 1.5; }
+.xstatus { box-shadow: var(--thin-sunken); padding: 2px 4px; margin-top: 4px; font-size: 12px; }
+
+/* Escritorio al minimizar: Paint 98 y la carpeta Dibujos */
+#deskIcon { position: fixed; left: 12px; top: max(16px, env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 14px; }
+#deskIcon .deskicon { position: static; }
+#deskIcon .deskicon img.px { image-rendering: pixelated; }

@@ -327,6 +327,23 @@ kk....kk`,
 .wkkkkkkkkkkkkw.
 .wwwwwwwwwwwwww.
 ................`,
+  folder: `
+................
+................
+..kkkkk.........
+.kyyyyyk........
+kyywyyyykkkkkkk.
+kywwwwwwwwwwwwyk
+kywyyyyyyyyyyydk
+kywyyyyyyyyyyydk
+kywyyyyyyyyyyydk
+kywyyyyyyyyyyydk
+kywyyyyyyyyyyydk
+kywyyyyyyyyyyydk
+kyddddddddddddk.
+.kkkkkkkkkkkkk..
+................
+................`,
   warn: `
 ...............kk...............
 ..............kyyk..............

@@ -48,8 +48,9 @@ redondeado.
 
 **Menús**
 
-- **Archivo:** nuevo, abrir o importar cualquier imagen, guardar como PNG,
-  compartir, imprimir.
+- **Archivo:** nuevo, **abrir** (carpeta *Dibujos*), **importar** una imagen
+  de la galería o la computadora, **guardar** y guardar como (en *Dibujos*),
+  **exportar PNG**, compartir, imprimir y cerrar imagen.
 - **Edición:** deshacer y repetir, cortar, copiar, pegar, borrar selección,
   seleccionar todo, copiar en archivo y pegar desde archivo.
 - **Ver:** mostrar u ocultar herramientas, colores, barra de estado y barra de
@@ -68,6 +69,10 @@ redondeado.
   queda acostada, con sus opciones al lado. También se elige desde el menú Ver.
 - **Celular:** dos dedos mueven la imagen; si los separas o los juntas, la
   amplías o la reduces.
+- **Carpeta Dibujos:** "Guardar" deja tus dibujos en este dispositivo, sin
+  subirlos a internet. "Abrir" los muestra en miniatura en una ventana de
+  explorador, donde también se pueden eliminar. Al minimizar, la carpeta
+  *Dibujos* aparece en el escritorio junto al ícono de Paint 98.
 - **Guardado automático:** el dibujo se guarda solo en el dispositivo, así que
   no se pierde al cerrar.
 
@@ -86,7 +91,8 @@ redondeado.
 | Tecla | Acción |
 |---|---|
 | `+` / `−` | Más grueso / más delgado |
-| `Ctrl+N` / `Ctrl+O` / `Ctrl+S` | Nuevo / Abrir / Guardar como PNG |
+| `Ctrl+N` / `Ctrl+O` / `Ctrl+S` | Nuevo / Abrir (Dibujos) / Guardar |
+| `Ctrl+Mayús+O` / `Ctrl+Mayús+S` | Importar imagen / Exportar PNG |
 | `Ctrl+Z` / `Ctrl+Y` | Deshacer / Repetir |
 | `Ctrl+X` / `Ctrl+C` / `Ctrl+V` | Cortar / Copiar / Pegar |
 | `Ctrl+A` / `Supr` | Seleccionar todo / Borrar selección |
