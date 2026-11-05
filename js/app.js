@@ -883,7 +883,11 @@ function touchInfo() {
 ws.addEventListener("pointerdown", (e) => {
   closeMenu();
   if (e.pointerType === "touch") {
+    // Primer dedo de un gesto nuevo: olvidar dedos "fantasma" de gestos anteriores
+    // (Safari a veces no avisa cuando se levanta un dedo y el pellizco quedaba atorado)
+    if (e.isPrimary) resetTouches();
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { ws.setPointerCapture(e.pointerId); } catch {}
     if (touches.size === 2) {
       cancelOp(); pan = touchInfo(); pan.d0 = pan.d; pan.z0 = S.zoom;
       const r = cv.getBoundingClientRect(); // punto de la imagen que queda entre los dedos
@@ -918,6 +922,7 @@ ws.addEventListener("pointerdown", (e) => {
 ws.addEventListener("pointermove", (e) => {
   if (e.pointerType === "touch" && touches.has(e.pointerId)) {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pan && touches.size < 2) { pan = null; return; } // quedó un solo dedo: termina el pellizco
     if (pan && touches.size >= 2) {
       const t = touchInfo();
       // Pellizco continuo, de 1 % en 1 %; el mismo punto de la imagen sigue entre los dedos
@@ -954,6 +959,16 @@ function endPointer(e, cancelled) {
 }
 ws.addEventListener("pointerup", (e) => endPointer(e, false));
 ws.addEventListener("pointercancel", (e) => endPointer(e, true));
+function resetTouches() { touches.clear(); pan = null; }
+// Respaldo: si el sistema dice que ya no queda ningún dedo en la pantalla, se limpia el estado del pellizco
+const noFingers = (e) => { if (e.touches && e.touches.length === 0) { if (pan) resetTouches(); else touches.clear(); } };
+addEventListener("touchend", noFingers, { passive: true });
+addEventListener("touchcancel", noFingers, { passive: true });
+addEventListener("pointerup", (e) => { if (e.pointerType === "touch") { touches.delete(e.pointerId); if (!touches.size) pan = null; } });
+addEventListener("pointercancel", (e) => { if (e.pointerType === "touch") { touches.delete(e.pointerId); if (!touches.size) pan = null; } });
+ws.addEventListener("lostpointercapture", (e) => { if (e.pointerType === "touch" && pan) { touches.delete(e.pointerId); if (touches.size < 2) pan = null; } });
+document.addEventListener("visibilitychange", () => { if (document.hidden) { cancelOp(); resetTouches(); } });
+addEventListener("blur", () => resetTouches());
 ws.addEventListener("pointerleave", () => { setPos(null); lastPtr = null; updateEraserCursor(); });
 ws.addEventListener("contextmenu", (e) => e.preventDefault());
 ws.addEventListener("wheel", (e) => {
