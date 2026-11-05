@@ -44,11 +44,11 @@ const THEMES = [["std", "Estándar"], ["desert", "Desierto"], ["eggplant", "Bere
 const SIZE_KEYS = { pencil: ["pencil", WIDTHS], brush: ["brush", BRUSH_SIZES], eraser: ["eraser", ERASERS], airbrush: ["air", AIRS],
   line: ["line", WIDTHS], curve: ["line", WIDTHS], rect: ["line", WIDTHS], poly: ["line", WIDTHS], ellipse: ["line", WIDTHS], rrect: ["line", WIDTHS] };
 const ZOOMS = [1, 2, 6, 8];
-// El zoom avanza de 5 % en 5 % (de 10 % a 800 %)
+// El zoom avanza de 1 % en 1 % (de 10 % a 800 %)
 const ZOOM_MIN = 0.1, ZOOM_MAX = 8;
 // Índice del paso de zoom más cercano al zoom actual (puede ser un valor libre, p. ej. "ajustar")
-const round5 = (z) => clamp(Math.round(z * 20) / 20, ZOOM_MIN, ZOOM_MAX); // múltiplo de 5 %
-const zoomStep = (dir) => round5(Math.round(S.zoom * 20 + dir) / 20);
+const roundZ = (z) => clamp(Math.round(z * 100) / 100, ZOOM_MIN, ZOOM_MAX); // en % enteros
+const zoomStep = (dir) => roundZ(Math.round(S.zoom * 100 + dir) / 100);
 const pct = (z) => Math.round(z * 100) + "%";
 const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
 const UNDO_LIMIT = 12;
@@ -215,8 +215,8 @@ function markDirty() { S.dirty = true; clearTimeout(saveTimer); saveTimer = setT
 function autosave() {
   const c = copyCanvas(cv);
   if (sel && sel.floating) c.getContext("2d").drawImage(selcv, sel.x, sel.y);
-  c.toBlob((b) => { if (b) idb.set("image", { blob: b, dirty: S.dirty }).catch(() => {}); }, "image/png");
   saveSettings();
+  return new Promise((res) => c.toBlob((b) => { if (!b) return res(); idb.set("image", { blob: b, dirty: S.dirty }).catch(() => {}).then(res); }, "image/png"));
 }
 
 // ---------- Selección ----------
@@ -741,8 +741,8 @@ ws.addEventListener("pointermove", (e) => {
     if (pan && touches.size >= 2) {
       const t = touchInfo();
       ws.scrollLeft -= t.mx - pan.mx; ws.scrollTop -= t.my - pan.my;
-      // Pellizco continuo, redondeado a pasos de 5 %
-      const z = round5(pan.z0 * (t.d / pan.d0));
+      // Pellizco continuo, de 1 % en 1 %
+      const z = roundZ(pan.z0 * (t.d / pan.d0));
       if (z !== S.zoom) zoomAt(z, t.mx, t.my);
       t.d0 = pan.d0; t.z0 = pan.z0;
       pan = t;
@@ -1459,7 +1459,7 @@ function zoomAt(z, cx, cy) {
 }
 function zoomFit() {
   const z = Math.min((ws.clientWidth - 20) / cv.width, (ws.clientHeight - 20) / cv.height);
-  setZoom(clamp(Math.floor(z * 20) / 20, ZOOM_MIN, ZOOM_MAX), { x: cv.width / 2, y: cv.height / 2 });
+  setZoom(clamp(Math.floor(z * 100) / 100, ZOOM_MIN, ZOOM_MAX), { x: cv.width / 2, y: cv.height / 2 });
 }
 async function zoomDlg() {
   const r = await dialog({
@@ -1468,7 +1468,7 @@ async function zoomDlg() {
       <div style="display:grid;grid-template-columns:1fr 1fr;column-gap:16px">
       ${[0.1, 0.25, 0.5, 0.75, 1, 2, 4, 6, 8].map((z) => `<label class="rl"><input type="radio" name="z" value="${z}"${z === S.zoom ? " checked" : ""}>${z * 100}%</label>`).join("")}
       <label class="rl"><input type="radio" name="z" value="otro"${[0.1, 0.25, 0.5, 0.75, 1, 2, 4, 6, 8].includes(S.zoom) ? "" : " checked"}>Otro:</label></div>
-      <div class="row" style="padding-left:24px"><input id="zOther" class="field" type="number" min="10" max="800" step="5" value="${Math.round(S.zoom * 100)}"> %</div></fieldset>`,
+      <div class="row" style="padding-left:24px"><input id="zOther" class="field" type="number" min="10" max="800" step="1" value="${Math.round(S.zoom * 100)}"> %</div></fieldset>`,
     init: (b) => { const o = b.querySelector("#zOther"); o.addEventListener("focus", () => (b.querySelector("[value=otro]").checked = true)); },
     buttons: [["Aceptar", "ok", true], ["Cancelar", "cancel"]],
   });
@@ -1476,7 +1476,7 @@ async function zoomDlg() {
   const c = r.body.querySelector("[name=z]:checked"); if (!c) return;
   if (c.value !== "otro") return setZoom(+c.value);
   const v = parseFloat(r.body.querySelector("#zOther").value);
-  if (isFinite(v)) setZoom(round5(v / 100));
+  if (isFinite(v)) setZoom(roundZ(v / 100));
 }
 
 // ---------- Diálogos ----------
@@ -1581,8 +1581,8 @@ const MENUS = [
     ["Zoom &grande", "Ctrl+AvPág", () => setZoom(4), { chk: S.zoom === 4 }],
     ["Zoom &personalizado...", "", zoomDlg],
     ["&Ajustar a la ventana", "Ctrl+0", zoomFit],
-    ["A&cercar 5 %", "Ctrl++", () => setZoom(zoomStep(1)), { dis: S.zoom >= ZOOM_MAX }],
-    ["Alej&ar 5 %", "Ctrl+−", () => setZoom(zoomStep(-1)), { dis: S.zoom <= ZOOM_MIN }],
+    ["A&cercar 1 %", "Ctrl++", () => setZoom(zoomStep(1)), { dis: S.zoom >= ZOOM_MAX }],
+    ["Alej&ar 1 %", "Ctrl+−", () => setZoom(zoomStep(-1)), { dis: S.zoom <= ZOOM_MIN }],
     ["&Mostrar cuadrícula", "Ctrl+G", () => { S.grid = !S.grid; layout(); saveSettings(); }, { chk: S.grid, dis: S.zoom < 4 }],
     "-",
     ["&Ver mapa de bits", "Ctrl+F", viewBitmap],
@@ -1789,6 +1789,39 @@ addEventListener("resize", () => { closeMenu(); layout(); });
 addEventListener("pagehide", autosave);
 document.addEventListener("visibilitychange", () => { if (document.hidden) autosave(); });
 
+// ---------- Aviso de actualización (widget flotante abajo) ----------
+function setupUpdates() {
+  if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+  const hadController = !!navigator.serviceWorker.controller; // false la primera vez que se instala
+  let shown = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController && !shown) { shown = true; showUpdateWidget(); }
+  });
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+    setInterval(check, 30 * 60 * 1000);
+  }).catch(() => {});
+}
+function showUpdateWidget() {
+  if ($("updWidget")) return;
+  const w = document.createElement("div");
+  w.id = "updWidget"; w.className = "window updwidget"; w.setAttribute("role", "status");
+  w.innerHTML = `<div class="titlebar small"><span class="ttext">Actualización disponible</span>
+      <div class="tbtns"><button class="tbtn close" data-u="later" aria-label="Cerrar"></button></div></div>
+    <div class="updbody">${iconImg("update")}<div>Hay una nueva versión de <b>Paint 98</b>.<br>Tu dibujo se conserva al actualizar.</div></div>
+    <div class="updbtns"><button class="btn98 def" data-u="now">Actualizar ahora</button><button class="btn98" data-u="later">Después</button></div>`;
+  document.body.append(w);
+  w.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-u]"); if (!b) return;
+    if (b.dataset.u === "later") { w.classList.add("bye"); setTimeout(() => w.remove(), 200); return; }
+    b.disabled = true; b.textContent = "Actualizando...";
+    commitAll();
+    await autosave();
+    location.reload();
+  });
+}
+
 // ---------- Inicio ----------
 async function init() {
   applyTheme(); applyDock();
@@ -1807,7 +1840,7 @@ async function init() {
   } catch {}
   if (!restored) { const d = defaultSize(); setCanvasSize(d.w, d.h, false, "#ffffff"); }
   stage.className = "stage t-" + S.tool;
-  if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  setupUpdates();
 }
 init();
 window.__paint = { S, cv, setTool, renderColors, renderOptions, get sel() { return sel; } }; // para pruebas

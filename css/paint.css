@@ -366,3 +366,15 @@ img.px.inl { display: inline-block; width: 16px; height: 16px; vertical-align: -
 #deskIcon { position: fixed; left: 12px; top: max(16px, env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 14px; }
 #deskIcon .deskicon { position: static; }
 #deskIcon .deskicon img.px { image-rendering: pixelated; }
+
+/* ---------- Widget flotante: actualización disponible ---------- */
+.updwidget { position: fixed; z-index: 90; left: 50%; bottom: calc(40px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  width: min(340px, calc(100vw - 24px)); animation: updIn .25s ease-out; }
+.updwidget.bye { opacity: 0; transition: opacity .2s; }
+.updbody { display: flex; gap: 10px; align-items: center; padding: 10px 8px 6px; line-height: 1.35; }
+.updbody img { width: 32px; height: 32px; flex: none; }
+.updbtns { display: flex; justify-content: flex-end; gap: 6px; padding: 4px 6px 6px; }
+.updbtns .btn98 { min-width: 90px; height: 26px; }
+.updbtns .btn98.def { box-shadow: inset 0 0 0 1px #000, inset -2px -2px var(--dark), inset 2px 2px var(--hl), inset -3px -3px var(--shadow), inset 3px 3px var(--light); }
+@media (pointer: coarse) { .updbtns .btn98 { height: 34px; } }
+@keyframes updIn { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }

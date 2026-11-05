@@ -1,12 +1,14 @@
-// sw.js — funciona sin conexión. Sube CACHE al cambiar archivos.
-const CACHE = "paint98-v11";
+// sw.js — funciona sin conexión. Sube CACHE al cambiar archivos:
+// así la app detecta la versión nueva y muestra el aviso "Actualización disponible".
+const CACHE = "paint98-v12";
 const SHELL = [
   "./", "css/paint.css", "js/app.js", "js/raster.js", "js/icons.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
   "icons/favicon-64.png", "icons/logo-32.png",
 ];
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: "reload" evita copiar archivos viejos de la caché del navegador
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
