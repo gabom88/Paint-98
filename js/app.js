@@ -44,10 +44,11 @@ const THEMES = [["std", "Estándar"], ["desert", "Desierto"], ["eggplant", "Bere
 const SIZE_KEYS = { pencil: ["pencil", WIDTHS], brush: ["brush", BRUSH_SIZES], eraser: ["eraser", ERASERS], airbrush: ["air", AIRS],
   line: ["line", WIDTHS], curve: ["line", WIDTHS], rect: ["line", WIDTHS], poly: ["line", WIDTHS], ellipse: ["line", WIDTHS], rrect: ["line", WIDTHS] };
 const ZOOMS = [1, 2, 6, 8];
-const ZOOM_STEPS = [0.1, 0.15, 0.2, 0.25, 0.33, 0.5, 0.75, 1, 2, 3, 4, 6, 8];
+// El zoom avanza de 5 % en 5 % (de 10 % a 800 %)
 const ZOOM_MIN = 0.1, ZOOM_MAX = 8;
 // Índice del paso de zoom más cercano al zoom actual (puede ser un valor libre, p. ej. "ajustar")
-const zoomIdx = () => ZOOM_STEPS.reduce((bi, v, i) => (Math.abs(Math.log(v / S.zoom)) < Math.abs(Math.log(ZOOM_STEPS[bi] / S.zoom)) ? i : bi), 0);
+const round5 = (z) => clamp(Math.round(z * 20) / 20, ZOOM_MIN, ZOOM_MAX); // múltiplo de 5 %
+const zoomStep = (dir) => round5(Math.round(S.zoom * 20 + dir) / 20);
 const pct = (z) => Math.round(z * 100) + "%";
 const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
 const UNDO_LIMIT = 12;
@@ -713,7 +714,7 @@ ws.addEventListener("pointerdown", (e) => {
   closeMenu();
   if (e.pointerType === "touch") {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (touches.size === 2) { cancelOp(); pan = touchInfo(); pan.d0 = pan.d; return; }
+    if (touches.size === 2) { cancelOp(); pan = touchInfo(); pan.d0 = pan.d; pan.z0 = S.zoom; return; }
     if (touches.size > 2) return;
   }
   if (pan) return;
@@ -740,16 +741,10 @@ ws.addEventListener("pointermove", (e) => {
     if (pan && touches.size >= 2) {
       const t = touchInfo();
       ws.scrollLeft -= t.mx - pan.mx; ws.scrollTop -= t.my - pan.my;
-      const ratio = t.d / pan.d0;
-      if (ratio > 1.5 || ratio < 0.66) {
-        const i = zoomIdx();
-        const ni = clamp(i + (ratio > 1 ? 1 : -1), 0, ZOOM_STEPS.length - 1);
-        if (ni !== i) {
-          const r = cv.getBoundingClientRect();
-          setZoom(ZOOM_STEPS[ni], { x: (t.mx - r.left) / S.zoom, y: (t.my - r.top) / S.zoom });
-        }
-        t.d0 = t.d;
-      } else t.d0 = pan.d0;
+      // Pellizco continuo, redondeado a pasos de 5 %
+      const z = round5(pan.z0 * (t.d / pan.d0));
+      if (z !== S.zoom) zoomAt(z, t.mx, t.my);
+      t.d0 = pan.d0; t.z0 = pan.z0;
       pan = t;
       return;
     }
@@ -781,10 +776,8 @@ ws.addEventListener("contextmenu", (e) => e.preventDefault());
 ws.addEventListener("wheel", (e) => {
   if (!e.ctrlKey) return;
   e.preventDefault();
-  const i = zoomIdx();
-  const ni = clamp(i + (e.deltaY < 0 ? 1 : -1), 0, ZOOM_STEPS.length - 1);
-  const r = cv.getBoundingClientRect();
-  if (ni !== i) setZoom(ZOOM_STEPS[ni], { x: (e.clientX - r.left) / S.zoom, y: (e.clientY - r.top) / S.zoom });
+  const z = zoomStep(e.deltaY < 0 ? 1 : -1);
+  if (z !== S.zoom) zoomAt(z, e.clientX, e.clientY);
 }, { passive: false });
 textedit.addEventListener("input", growText);
 textedit.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -1456,9 +1449,17 @@ function clearImage() {
   if (sel) { deleteSel(); return; }
   pushUndo(); R.ink(ctx, S.secondary); ctx.fillRect(0, 0, cv.width, cv.height); R.ink(ctx, "#000");
 }
+// Cambia el zoom dejando fijo el punto de la imagen que está bajo el dedo o el mouse
+function zoomAt(z, cx, cy) {
+  const r0 = cv.getBoundingClientRect(), px = (cx - r0.left) / S.zoom, py = (cy - r0.top) / S.zoom;
+  setZoom(z);
+  const r1 = cv.getBoundingClientRect();
+  ws.scrollLeft += r1.left + px * S.zoom - cx;
+  ws.scrollTop += r1.top + py * S.zoom - cy;
+}
 function zoomFit() {
   const z = Math.min((ws.clientWidth - 20) / cv.width, (ws.clientHeight - 20) / cv.height);
-  setZoom(clamp(z >= 1 ? Math.floor(z) : Math.floor(z * 100) / 100, ZOOM_MIN, ZOOM_MAX), { x: cv.width / 2, y: cv.height / 2 });
+  setZoom(clamp(Math.floor(z * 20) / 20, ZOOM_MIN, ZOOM_MAX), { x: cv.width / 2, y: cv.height / 2 });
 }
 async function zoomDlg() {
   const r = await dialog({
@@ -1467,7 +1468,7 @@ async function zoomDlg() {
       <div style="display:grid;grid-template-columns:1fr 1fr;column-gap:16px">
       ${[0.1, 0.25, 0.5, 0.75, 1, 2, 4, 6, 8].map((z) => `<label class="rl"><input type="radio" name="z" value="${z}"${z === S.zoom ? " checked" : ""}>${z * 100}%</label>`).join("")}
       <label class="rl"><input type="radio" name="z" value="otro"${[0.1, 0.25, 0.5, 0.75, 1, 2, 4, 6, 8].includes(S.zoom) ? "" : " checked"}>Otro:</label></div>
-      <div class="row" style="padding-left:24px"><input id="zOther" class="field" type="number" min="10" max="800" value="${Math.round(S.zoom * 100)}"> %</div></fieldset>`,
+      <div class="row" style="padding-left:24px"><input id="zOther" class="field" type="number" min="10" max="800" step="5" value="${Math.round(S.zoom * 100)}"> %</div></fieldset>`,
     init: (b) => { const o = b.querySelector("#zOther"); o.addEventListener("focus", () => (b.querySelector("[value=otro]").checked = true)); },
     buttons: [["Aceptar", "ok", true], ["Cancelar", "cancel"]],
   });
@@ -1475,7 +1476,7 @@ async function zoomDlg() {
   const c = r.body.querySelector("[name=z]:checked"); if (!c) return;
   if (c.value !== "otro") return setZoom(+c.value);
   const v = parseFloat(r.body.querySelector("#zOther").value);
-  if (isFinite(v)) setZoom(clamp(v, 10, 800) / 100);
+  if (isFinite(v)) setZoom(round5(v / 100));
 }
 
 // ---------- Diálogos ----------
@@ -1580,8 +1581,8 @@ const MENUS = [
     ["Zoom &grande", "Ctrl+AvPág", () => setZoom(4), { chk: S.zoom === 4 }],
     ["Zoom &personalizado...", "", zoomDlg],
     ["&Ajustar a la ventana", "Ctrl+0", zoomFit],
-    ["A&cercar", "", () => setZoom(ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, zoomIdx() + 1)]), { dis: S.zoom >= ZOOM_MAX }],
-    ["Alej&ar", "", () => setZoom(ZOOM_STEPS[Math.max(0, zoomIdx() - 1)]), { dis: S.zoom <= ZOOM_MIN }],
+    ["A&cercar 5 %", "Ctrl++", () => setZoom(zoomStep(1)), { dis: S.zoom >= ZOOM_MAX }],
+    ["Alej&ar 5 %", "Ctrl+−", () => setZoom(zoomStep(-1)), { dis: S.zoom <= ZOOM_MIN }],
     ["&Mostrar cuadrícula", "Ctrl+G", () => { S.grid = !S.grid; layout(); saveSettings(); }, { chk: S.grid, dis: S.zoom < 4 }],
     "-",
     ["&Ver mapa de bits", "Ctrl+F", viewBitmap],
@@ -1765,6 +1766,7 @@ document.addEventListener("keydown", (e) => {
     t: () => toggleView("showTools"), l: () => toggleView("showColors"), g: () => { S.grid = !S.grid; layout(); },
     r: flipRotateDlg, w: stretchDlg, i: invertColors, e: attributesDlg, f: viewBitmap,
     pageup: () => setZoom(1), pagedown: () => setZoom(4), 0: zoomFit,
+    "+": () => setZoom(zoomStep(1)), "=": () => setZoom(zoomStep(1)), "-": () => setZoom(zoomStep(-1)),
   };
   if (k === "v") return; // lo maneja el evento "paste"
   if (map[k]) { e.preventDefault(); map[k](); }
