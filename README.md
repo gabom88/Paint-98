@@ -4,6 +4,8 @@ Programa de dibujo para el navegador con el estilo de un escritorio de 1998.
 Está hecho en JavaScript puro, sin instalar nada ni pasos de compilación, y
 pensado sobre todo para usarse en el celular en vertical.
 
+![Paint 98 con un dibujo de un luchador de artes marciales](docs/preview.png)
+
 **Úsalo aquí:** https://gabom88.github.io/Paint-98/
 
 Funciona sin conexión y se puede instalar en la pantalla de inicio
@@ -63,6 +65,21 @@ redondeado.
   amplías o la reduces.
 - **Guardado automático:** el dibujo se guarda solo en el dispositivo, así que
   no se pierde al cerrar.
+
+## Capturas
+
+| En el celular (tema Lila, colores a la izquierda) | Modificar colores |
+|---|---|
+| <img src="docs/celular.png" alt="Paint 98 en un celular" width="300"> | <img src="docs/colores.png" alt="Ventana Modificar colores" width="420"> |
+
+**Menú Imagen**
+
+![Menú Imagen abierto](docs/menu.png)
+
+**El dibujo exportado como PNG** (hecho con la propia app: figuras, polígonos,
+líneas gruesas, aerógrafo, relleno y texto)
+
+![Dibujo exportado](docs/dibujo.png)
 
 ## Atajos de teclado
 

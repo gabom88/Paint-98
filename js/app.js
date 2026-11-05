@@ -1631,4 +1631,4 @@ async function init() {
   if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 init();
-window.__paint = { S, cv, setTool, get sel() { return sel; } }; // para pruebas
+window.__paint = { S, cv, setTool, renderColors, renderOptions, get sel() { return sel; } }; // para pruebas
