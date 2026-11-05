@@ -53,7 +53,7 @@ redondeado.
 - **Edición:** deshacer y repetir, cortar, copiar, pegar, borrar selección,
   seleccionar todo, copiar en archivo y pegar desde archivo.
 - **Ver:** mostrar u ocultar herramientas, colores, barra de estado y barra de
-  texto; zoom de 100 % a 800 %; cuadrícula; ver la imagen a pantalla completa.
+  texto; zoom de 10 % a 800 % (y "Ajustar a la ventana"); cuadrícula; ver la imagen a pantalla completa.
 - **Imagen:** voltear o girar, expandir o inclinar, invertir colores, cambiar
   el tamaño (atributos), borrar imagen y dibujar opaco.
 
@@ -90,7 +90,8 @@ redondeado.
 | `Ctrl+R` / `Ctrl+W` / `Ctrl+I` / `Ctrl+E` | Voltear o girar / Expandir / Invertir / Atributos |
 | `Ctrl+T` / `Ctrl+L` | Mostrar u ocultar herramientas / colores |
 | `Ctrl+G` / `Ctrl+F` | Cuadrícula / Ver imagen |
-| `Ctrl + rueda del mouse` | Zoom |
+| `Ctrl + rueda del mouse` | Zoom (de 10 % a 800 %) |
+| `Ctrl+0` | Ajustar el zoom a la ventana |
 | `Esc` | Cancelar lo que se está dibujando |
 | `F1` | Ayuda |
 

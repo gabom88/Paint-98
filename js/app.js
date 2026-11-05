@@ -44,7 +44,11 @@ const THEMES = [["std", "Estándar"], ["desert", "Desierto"], ["eggplant", "Bere
 const SIZE_KEYS = { pencil: ["pencil", WIDTHS], brush: ["brush", BRUSH_SIZES], eraser: ["eraser", ERASERS], airbrush: ["air", AIRS],
   line: ["line", WIDTHS], curve: ["line", WIDTHS], rect: ["line", WIDTHS], poly: ["line", WIDTHS], ellipse: ["line", WIDTHS], rrect: ["line", WIDTHS] };
 const ZOOMS = [1, 2, 6, 8];
-const ZOOM_STEPS = [1, 2, 3, 4, 6, 8];
+const ZOOM_STEPS = [0.1, 0.15, 0.2, 0.25, 0.33, 0.5, 0.75, 1, 2, 3, 4, 6, 8];
+const ZOOM_MIN = 0.1, ZOOM_MAX = 8;
+// Índice del paso de zoom más cercano al zoom actual (puede ser un valor libre, p. ej. "ajustar")
+const zoomIdx = () => ZOOM_STEPS.reduce((bi, v, i) => (Math.abs(Math.log(v / S.zoom)) < Math.abs(Math.log(ZOOM_STEPS[bi] / S.zoom)) ? i : bi), 0);
+const pct = (z) => Math.round(z * 100) + "%";
 const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
 const UNDO_LIMIT = 12;
 
@@ -161,7 +165,11 @@ function layout() {
 function setZoom(z, center) {
   const cx = center ? center.x : (ws.scrollLeft + ws.clientWidth / 2) / S.zoom;
   const cy = center ? center.y : (ws.scrollTop + ws.clientHeight / 2) / S.zoom;
+  z = clamp(z, ZOOM_MIN, ZOOM_MAX);
   S.zoom = z;
+  // Al reducir, suavizar; al ampliar, píxeles nítidos
+  for (const c of [cv, ov, selcv]) c.style.imageRendering = z < 1 ? "auto" : "";
+  if (typeof flash === "function" && z !== 1) flash(`Zoom: ${pct(z)}`);
   layout();
   ws.scrollLeft = cx * z - ws.clientWidth / 2;
   ws.scrollTop = cy * z - ws.clientHeight / 2;
@@ -723,7 +731,7 @@ ws.addEventListener("pointermove", (e) => {
       ws.scrollLeft -= t.mx - pan.mx; ws.scrollTop -= t.my - pan.my;
       const ratio = t.d / pan.d0;
       if (ratio > 1.5 || ratio < 0.66) {
-        const i = ZOOM_STEPS.indexOf(S.zoom) >= 0 ? ZOOM_STEPS.indexOf(S.zoom) : 0;
+        const i = zoomIdx();
         const ni = clamp(i + (ratio > 1 ? 1 : -1), 0, ZOOM_STEPS.length - 1);
         if (ni !== i) {
           const r = cv.getBoundingClientRect();
@@ -762,7 +770,7 @@ ws.addEventListener("contextmenu", (e) => e.preventDefault());
 ws.addEventListener("wheel", (e) => {
   if (!e.ctrlKey) return;
   e.preventDefault();
-  const i = Math.max(0, ZOOM_STEPS.indexOf(S.zoom));
+  const i = zoomIdx();
   const ni = clamp(i + (e.deltaY < 0 ? 1 : -1), 0, ZOOM_STEPS.length - 1);
   const r = cv.getBoundingClientRect();
   if (ni !== i) setZoom(ZOOM_STEPS[ni], { x: (e.clientX - r.left) / S.zoom, y: (e.clientY - r.top) / S.zoom });
@@ -1327,15 +1335,26 @@ function clearImage() {
   if (sel) { deleteSel(); return; }
   pushUndo(); R.ink(ctx, S.secondary); ctx.fillRect(0, 0, cv.width, cv.height); R.ink(ctx, "#000");
 }
+function zoomFit() {
+  const z = Math.min((ws.clientWidth - 20) / cv.width, (ws.clientHeight - 20) / cv.height);
+  setZoom(clamp(z >= 1 ? Math.floor(z) : Math.floor(z * 100) / 100, ZOOM_MIN, ZOOM_MAX), { x: cv.width / 2, y: cv.height / 2 });
+}
 async function zoomDlg() {
   const r = await dialog({
     title: "Zoom personalizado",
-    html: `<div class="row">Zoom actual: ${S.zoom * 100}%</div><fieldset class="g98"><legend>Zoom a</legend>
-      ${[1, 2, 4, 6, 8].map((z) => `<label class="rl"><input type="radio" name="z" value="${z}"${z === S.zoom ? " checked" : ""}>${z * 100}%</label>`).join("")}</fieldset>`,
+    html: `<div class="row">Zoom actual: ${pct(S.zoom)}</div><fieldset class="g98"><legend>Zoom a</legend>
+      <div style="display:grid;grid-template-columns:1fr 1fr;column-gap:16px">
+      ${[0.1, 0.25, 0.5, 0.75, 1, 2, 4, 6, 8].map((z) => `<label class="rl"><input type="radio" name="z" value="${z}"${z === S.zoom ? " checked" : ""}>${z * 100}%</label>`).join("")}
+      <label class="rl"><input type="radio" name="z" value="otro"${[0.1, 0.25, 0.5, 0.75, 1, 2, 4, 6, 8].includes(S.zoom) ? "" : " checked"}>Otro:</label></div>
+      <div class="row" style="padding-left:24px"><input id="zOther" class="field" type="number" min="10" max="800" value="${Math.round(S.zoom * 100)}"> %</div></fieldset>`,
+    init: (b) => { const o = b.querySelector("#zOther"); o.addEventListener("focus", () => (b.querySelector("[value=otro]").checked = true)); },
     buttons: [["Aceptar", "ok", true], ["Cancelar", "cancel"]],
   });
   if (r.btn !== "ok") return;
-  const c = r.body.querySelector("[name=z]:checked"); if (c) setZoom(+c.value);
+  const c = r.body.querySelector("[name=z]:checked"); if (!c) return;
+  if (c.value !== "otro") return setZoom(+c.value);
+  const v = parseFloat(r.body.querySelector("#zOther").value);
+  if (isFinite(v)) setZoom(clamp(v, 10, 800) / 100);
 }
 
 // ---------- Diálogos ----------
@@ -1375,7 +1394,7 @@ function helpDlg() {
     html: `<div class="help">
       <p><b>Dibujar:</b> elige una herramienta y arrastra sobre la imagen. Clic izquierdo usa el color de primer plano; clic derecho, el de fondo.</p>
       <p><b>Colores:</b> toca un color para elegirlo. Mantén presionado un color para ponerlo como color de fondo. Toca dos veces para modificarlo. Toca el cuadro de colores actuales para intercambiarlos.</p>
-      <p><b>Pantalla táctil:</b> usa dos dedos para mover la imagen; sepáralos o júntalos para ampliar o reducir.</p>
+      <p><b>Pantalla táctil:</b> usa dos dedos para mover la imagen; sepáralos o júntalos para ampliar o reducir (de 10% a 800%).</p>
       <p><b>Más espacio:</b> el botón a la derecha del menú (o Ver ▸ Cuadro de herramientas) oculta las herramientas.</p>
       <p><b>Curva:</b> traza la línea y luego toca una o dos veces para doblarla. <b>Polígono:</b> toca cada vértice y termina tocando el punto inicial (o doble clic).</p>
       <p><b>Selección:</b> arrastra para mover; usa los cuadritos para cambiar el tamaño. Ctrl + arrastrar copia; Mayús + arrastrar deja un rastro.</p>
@@ -1426,6 +1445,9 @@ const MENUS = [
     ["Zoom &normal", "Ctrl+RePág", () => setZoom(1), { chk: S.zoom === 1 }],
     ["Zoom &grande", "Ctrl+AvPág", () => setZoom(4), { chk: S.zoom === 4 }],
     ["Zoom &personalizado...", "", zoomDlg],
+    ["&Ajustar a la ventana", "Ctrl+0", zoomFit],
+    ["A&cercar", "", () => setZoom(ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, zoomIdx() + 1)]), { dis: S.zoom >= ZOOM_MAX }],
+    ["Alej&ar", "", () => setZoom(ZOOM_STEPS[Math.max(0, zoomIdx() - 1)]), { dis: S.zoom <= ZOOM_MIN }],
     ["&Mostrar cuadrícula", "Ctrl+G", () => { S.grid = !S.grid; layout(); saveSettings(); }, { chk: S.grid, dis: S.zoom < 4 }],
     "-",
     ["&Ver mapa de bits", "Ctrl+F", viewBitmap],
@@ -1604,7 +1626,7 @@ document.addEventListener("keydown", (e) => {
     z: () => (e.shiftKey ? doRedo() : doUndo()), y: doRedo, x: cutSel, c: copySel, a: selectAll,
     t: () => toggleView("showTools"), l: () => toggleView("showColors"), g: () => { S.grid = !S.grid; layout(); },
     r: flipRotateDlg, w: stretchDlg, i: invertColors, e: attributesDlg, f: viewBitmap,
-    pageup: () => setZoom(1), pagedown: () => setZoom(4),
+    pageup: () => setZoom(1), pagedown: () => setZoom(4), 0: zoomFit,
   };
   if (k === "v") return; // lo maneja el evento "paste"
   if (map[k]) { e.preventDefault(); map[k](); }
