@@ -1324,8 +1324,12 @@ async function askSave() { // true = seguir, false = cancelar
   if (r.btn === "yes") return await saveDoc();
   return true;
 }
-function defaultSize() {
-  return { w: clamp(ws.clientWidth - 22, 64, 1600), h: clamp(ws.clientHeight - 22, 64, 1600) };
+const DEFAULT_W = 512, DEFAULT_H = 512; // tamaño de todo dibujo nuevo
+function defaultSize() { return { w: DEFAULT_W, h: DEFAULT_H }; }
+// Si el lienzo no cabe en pantalla (p. ej. en el celular), lo muestra completo; si cabe, a 100 %
+function viewNew() {
+  const fits = cv.width <= ws.clientWidth - 22 && cv.height <= ws.clientHeight - 22;
+  if (fits) { setZoom(1, { x: 0, y: 0 }); scrollHome(); } else { zoomFit(); scrollHome(); }
 }
 async function fileNew() {
   commitAll();
@@ -1334,7 +1338,7 @@ async function fileNew() {
   undo.length = 0; redo.length = 0;
   resetLayers(d.w, d.h, "#ffffff");
   S.fileName = "sin título"; S.docName = null; setTitle();
-  setZoom(1, { x: 0, y: 0 }); scrollHome();
+  viewNew();
   markDirty(); S.dirty = false;
 }
 function fileImport() { $("fileOpen").value = ""; $("fileOpen").click(); }
@@ -2055,8 +2059,8 @@ async function init() {
       restored = true;
     }
   } catch {}
-  if (!restored) { const d = defaultSize(); resetLayers(d.w, d.h, "#ffffff"); }
-  scrollHome();
+  if (!restored) { const d = defaultSize(); resetLayers(d.w, d.h, "#ffffff"); viewNew(); }
+  else scrollHome();
   renderLayers();
   stage.className = "stage t-" + S.tool;
   setupUpdates();

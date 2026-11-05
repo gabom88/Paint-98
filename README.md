@@ -60,7 +60,7 @@ en computadora también con la barra espaciadora).
 
 **Menús**
 
-- **Archivo:** nuevo, **abrir** (carpeta *Dibujos*), **importar** una imagen
+- **Archivo:** nuevo (512 × 512 píxeles por defecto), **abrir** (carpeta *Dibujos*), **importar** una imagen
   de la galería o la computadora, **guardar** y guardar como (en *Dibujos*),
   **exportar PNG**, compartir, imprimir y cerrar imagen.
 - **Edición:** deshacer y repetir, cortar, copiar, pegar, borrar selección,
