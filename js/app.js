@@ -60,17 +60,18 @@ const S = {
   primary: "#000000", secondary: "#ffffff", palette: DEFAULT_PALETTE.slice(), palIdx: 0,
   zoom: 1, grid: false, transparent: false,
   opts: { v: 3, pencil: 0, brush: 4, brushShape: 0, eraser: 3, air: 0, line: 0, fill: 0, zoom: 2 },
-  theme: "std", dock: "bottom", toolDock: "left", docName: null, layersOn: false, custom: Array(16).fill("#ffffff"),
+  theme: "std", dock: "bottom", toolDock: "left", docName: null, layersOn: false, layerDock: "left", panelSeq: ["tools", "layers", "colors"], custom: Array(16).fill("#ffffff"),
   showTools: true, showColors: true, showStatus: true, showFont: true,
   font: { family: "Arial", size: 16, bold: false, italic: false, underline: false },
   fileName: "sin título", dirty: false,
 };
 try {
   const saved = JSON.parse(localStorage.getItem("paint98.settings") || "{}");
-  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "toolDock", "custom", "docName", "layersOn"]) if (k in saved) S[k] = saved[k];
+  for (const k of ["tool", "primary", "secondary", "palette", "grid", "transparent", "showTools", "showColors", "showStatus", "showFont", "fileName", "theme", "dock", "toolDock", "custom", "docName", "layersOn", "layerDock", "panelSeq"]) if (k in saved) S[k] = saved[k];
   if (!THEMES.some((t) => t[0] === S.theme)) S.theme = "std";
   if (!["bottom", "top", "left", "right"].includes(S.dock)) S.dock = "bottom";
   if (!["bottom", "top", "left", "right"].includes(S.toolDock)) S.toolDock = "left";
+  if (!["bottom", "top", "left", "right"].includes(S.layerDock)) S.layerDock = "left";
   if (!Array.isArray(S.custom) || S.custom.length !== 16) S.custom = Array(16).fill("#ffffff");
   if (saved.opts) {
     if (saved.opts.brushShape == null && saved.opts.brush != null) saved.opts.brushShape = Math.floor(saved.opts.brush / 3);
@@ -85,8 +86,8 @@ try {
 } catch {}
 function saveSettings() {
   try {
-    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName, layersOn } = S;
-    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName, layersOn }));
+    const { tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName, layersOn, layerDock, panelSeq } = S;
+    localStorage.setItem("paint98.settings", JSON.stringify({ tool, primary, secondary, palette, grid, transparent, showTools, showColors, showStatus, showFont, fileName, opts, font, theme, dock, toolDock, custom, docName, layersOn, layerDock, panelSeq }));
   } catch {}
 }
 
@@ -251,34 +252,48 @@ async function renameLayer(i) {
   });
   if (r.btn === "ok") { layers[i].name = r.body.querySelector("#lnName").value.trim().slice(0, 30) || layers[i].name; renderLayers(); markDirty(); }
 }
-// Panel de capas (debajo de las opciones de tamaño, dentro de la caja de herramientas)
-const lpanel = document.createElement("div"); lpanel.id = "layersPanel"; lpanel.className = "layers";
-lpanel.innerHTML = `<div class="lhead">Capas</div><div class="llist" id="llist"></div>
-  <div class="lname" id="lName"></div>
-  <div class="lop" title="Opacidad de la capa"><input type="range" id="lOp" min="0" max="100" step="1" aria-label="Opacidad de la capa"><span id="lOpV"></span></div>
-  <div class="lbtns">${[["lAdd", "Nueva capa", "lplus"], ["lDup", "Duplicar capa", "ldup"], ["lDel", "Eliminar capa", "ltrash"],
-    ["lUp", "Subir capa", "lup"], ["lDown", "Bajar capa", "ldown"], ["lMerge", "Combinar hacia abajo", "lmerge"]]
-    .map(([id, t, ic]) => `<button class="btn98 lbtn" id="${id}" title="${t}" aria-label="${t}">${iconImg(ic)}</button>`).join("")}</div>`;
-$("toolbox").append(lpanel);
+// Panel de capas: compacto (solo miniaturas) y se acomoda como los demás paneles.
+// El botón "···" abre la ventana "Capas" con todas las opciones, más grande y cómoda.
+const lpanel = document.createElement("div"); lpanel.id = "layersPanel"; lpanel.className = "layersbox";
+lpanel.innerHTML = `<div class="grip" id="lgrip" title="Arrastra para mover el panel de capas"></div>
+  <div class="lhead"><span>Capas</span><button class="btn98 lmore" id="lMore" title="Opciones de capas" aria-label="Opciones de capas">${iconImg("lmenu")}</button></div>
+  <div class="llist" id="llist"></div>`;
+document.body.append(lpanel);
+const LBTNS = [["lAdd", "Nueva", "lplus", "Nueva capa"], ["lDup", "Duplicar", "ldup", "Duplicar capa"], ["lDel", "Eliminar", "ltrash", "Eliminar capa"],
+  ["lUp", "Subir", "lup", "Subir capa"], ["lDown", "Bajar", "ldown", "Bajar capa"], ["lHide", "Ocultar", "leye", "Ocultar o mostrar capa"],
+  ["lMerge", "Combinar", "lmerge", "Combinar hacia abajo"], ["lFlat", "Acoplar", "lflat", "Acoplar imagen (unir todas)"], ["lRen", "Nombre...", "lren", "Cambiar nombre"]];
+const lwin = document.createElement("div"); lwin.id = "layerWin"; lwin.className = "window layerwin"; lwin.hidden = true;
+lwin.innerHTML = `<div class="titlebar small"><span class="ttext">Capas</span><div class="tbtns"><button class="tbtn close" id="lwClose" aria-label="Cerrar"></button></div></div>
+  <div class="lwbody">
+    <div class="lwlist" id="lwList"></div>
+    <div class="lwop"><label for="lOp">Opacidad:</label><input type="range" id="lOp" min="0" max="100" step="1"><span id="lOpV"></span></div>
+    <div class="lwbtns">${LBTNS.map(([id, t, ic, tip]) => `<button class="btn98 lwb" id="${id}" title="${tip}">${iconImg(ic)}<span>${t}</span></button>`).join("")}</div>
+  </div>`;
+document.body.append(lwin);
 function renderLayers() {
   lpanel.hidden = !S.layersOn;
-  if (!S.layersOn) return;
-  const list = $("llist");
-  list.innerHTML = layers.map((l, i) => `<div class="lrow${i === active ? " on" : ""}" data-i="${i}" title="${esc(l.name)} · ${Math.round(l.opacity * 100)}%">
-      <button class="leye" data-eye="${i}" aria-label="Mostrar u ocultar">${l.visible ? iconImg("leye") : ""}</button>
-      <canvas class="lth" width="40" height="30"></canvas></div>`).reverse().join("");
-  $("lName").textContent = layers[active].name;
-  $("lOp").value = Math.round(layers[active].opacity * 100);
-  $("lOpV").textContent = Math.round(layers[active].opacity * 100) + "%";
-  $("lDel").disabled = layers.length < 2; $("lMerge").disabled = active === 0;
-  $("lUp").disabled = active === layers.length - 1; $("lDown").disabled = active === 0;
+  if (!S.layersOn) { lwin.hidden = true; return; }
+  const rows = layers.map((l, i) => ({ l, i })).reverse(); // la capa de arriba primero
+  $("llist").innerHTML = rows.map(({ l, i }) => `<button class="lrow${i === active ? " on" : ""}${l.visible ? "" : " off"}" data-i="${i}" title="${esc(l.name)} · ${Math.round(l.opacity * 100)}%${l.visible ? "" : " · oculta"}">
+      <canvas class="lth" data-i="${i}" width="40" height="30"></canvas></button>`).join("");
+  if (!lwin.hidden) {
+    $("lwList").innerHTML = rows.map(({ l, i }) => `<div class="lwrow${i === active ? " on" : ""}" data-i="${i}">
+        <button class="leye" data-eye="${i}" title="Mostrar u ocultar" aria-label="Mostrar u ocultar">${l.visible ? iconImg("leye") : ""}</button>
+        <canvas class="lth big" data-i="${i}" width="64" height="48"></canvas>
+        <span class="lwname"><b>${esc(l.name)}</b><small>${Math.round(l.opacity * 100)}%${l.visible ? "" : " · oculta"}</small></span></div>`).join("");
+    $("lOp").value = Math.round(layers[active].opacity * 100);
+    $("lOpV").textContent = Math.round(layers[active].opacity * 100) + "%";
+    $("lDel").disabled = layers.length < 2; $("lMerge").disabled = active === 0; $("lFlat").disabled = layers.length < 2;
+    $("lUp").disabled = active === layers.length - 1; $("lDown").disabled = active === 0;
+    $("lHide").querySelector("span").textContent = layers[active].visible ? "Ocultar" : "Mostrar";
+  }
   drawThumbs();
 }
 function drawThumbs() {
   if (!S.layersOn) return;
-  const th = $("llist").querySelectorAll(".lth");
-  th.forEach((t, k) => {
-    const l = layers[layers.length - 1 - k], x = t.getContext("2d"), W = l.canvas.width, H = l.canvas.height;
+  document.querySelectorAll("canvas.lth").forEach((t) => {
+    const l = layers[+t.dataset.i]; if (!l) return;
+    const x = t.getContext("2d"), W = l.canvas.width, H = l.canvas.height;
     const sc = Math.min(t.width / W, t.height / H), w = W * sc, h = H * sc;
     x.clearRect(0, 0, t.width, t.height);
     x.drawImage(l.canvas, (t.width - w) / 2, (t.height - h) / 2, w, h);
@@ -286,21 +301,37 @@ function drawThumbs() {
 }
 let thumbTimer = 0;
 function scheduleThumbs() { clearTimeout(thumbTimer); thumbTimer = setTimeout(drawThumbs, 250); }
-$("llist").addEventListener("click", (e) => {
+function pickLayer(i) { if (i !== active) { commitAll(); setActive(i); } }
+$("llist").addEventListener("click", (e) => { const row = e.target.closest(".lrow"); if (row) pickLayer(+row.dataset.i); });
+$("llist").addEventListener("dblclick", (e) => { const row = e.target.closest(".lrow"); if (row) openLayerWin(); });
+$("lwList").addEventListener("click", (e) => {
   const eye = e.target.closest("[data-eye]");
   if (eye) { const l = layers[+eye.dataset.eye]; l.visible = !l.visible; syncLayers(); renderLayers(); markDirty(); return; }
-  const row = e.target.closest(".lrow"); if (!row) return;
-  const i = +row.dataset.i;
-  if (i !== active) { commitAll(); setActive(i); }
+  const row = e.target.closest(".lwrow"); if (row) pickLayer(+row.dataset.i);
 });
-$("llist").addEventListener("dblclick", (e) => { const row = e.target.closest(".lrow"); if (row) renameLayer(+row.dataset.i); });
+$("lwList").addEventListener("dblclick", (e) => { const row = e.target.closest(".lwrow"); if (row) renameLayer(+row.dataset.i); });
 $("lOp").addEventListener("input", (e) => {
   const v = +e.target.value / 100; layers[active].opacity = v;
   layers[active].canvas.style.opacity = v; $("lOpV").textContent = e.target.value + "%"; markDirty();
+  const sm = $("lwList").querySelector(".lwrow.on small"); if (sm) sm.textContent = e.target.value + "%" + (layers[active].visible ? "" : " · oculta");
 });
 $("lAdd").addEventListener("click", addLayer); $("lDup").addEventListener("click", dupLayer); $("lDel").addEventListener("click", delLayer);
 $("lUp").addEventListener("click", () => moveLayer(1)); $("lDown").addEventListener("click", () => moveLayer(-1)); $("lMerge").addEventListener("click", mergeDown);
-function toggleLayers() { S.layersOn = !S.layersOn; renderLayers(); saveSettings(); layout(); }
+$("lFlat").addEventListener("click", flattenLayers); $("lRen").addEventListener("click", () => renameLayer(active));
+$("lHide").addEventListener("click", () => { const l = layers[active]; l.visible = !l.visible; syncLayers(); renderLayers(); markDirty(); });
+function openLayerWin() { lwin.hidden = false; renderLayers(); }
+$("lMore").addEventListener("click", () => { if (lwin.hidden) openLayerWin(); else lwin.hidden = true; });
+$("lwClose").addEventListener("click", () => (lwin.hidden = true));
+// Mover la ventana "Capas" arrastrando su título
+lwin.querySelector(".titlebar").addEventListener("pointerdown", (e) => {
+  if (e.target.closest("button")) return;
+  const r = lwin.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+  e.preventDefault();
+  const mv = (ev) => { lwin.style.transform = "none"; lwin.style.left = clamp(ev.clientX - dx, 0, innerWidth - 80) + "px"; lwin.style.top = clamp(ev.clientY - dy, 0, innerHeight - 40) + "px"; };
+  const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); };
+  addEventListener("pointermove", mv); addEventListener("pointerup", up);
+});
+function toggleLayers() { S.layersOn = !S.layersOn; renderLayers(); saveSettings(); applyDock(); }
 function layout() {
   const z = S.zoom, W = cv.width * z, H = cv.height * z;
   for (const c of [layersEl, ov, ...layers.map((l) => l.canvas)]) { c.style.width = W + "px"; c.style.height = H + "px"; }
@@ -1233,17 +1264,25 @@ $("main").before(DOCKS.top); $("main").after(DOCKS.bottom);
 $("main").prepend(DOCKS.left); $("main").append(DOCKS.right);
 const tbox = $("toolbox");
 { const g = document.createElement("div"); g.className = "grip"; g.id = "tgrip"; g.title = "Arrastra para mover las herramientas (izquierda, derecha, arriba o abajo)"; tbox.prepend(g); }
+// Cada panel elige su lado; si dos paneles van del mismo lado, se apilan uno debajo del otro
+// (así no se hacen dos columnas y el lienzo no se angosta).
+const PANELS = { tools: () => tbox, colors: () => cbox, layers: () => lpanel };
+const PANEL_KEY = { tools: "toolDock", colors: "dock", layers: "layerDock" };
 function applyDock() {
   for (const d of Object.values(DOCKS)) d.replaceChildren();
-  // La caja de herramientas va pegada al borde; los colores, hacia el centro.
-  const place = (el, where) => DOCKS[where].append(el);
-  const order = { left: [tbox, cbox], top: [tbox, cbox], right: [cbox, tbox], bottom: [cbox, tbox] };
-  for (const where of ["left", "top", "right", "bottom"]) {
-    for (const el of order[where]) if ((el === tbox ? S.toolDock : S.dock) === where) place(el, where);
-  }
+  if (!Array.isArray(S.panelSeq) || S.panelSeq.length !== 3) S.panelSeq = ["tools", "layers", "colors"];
+  for (const k of S.panelSeq) DOCKS[S[PANEL_KEY[k]]].append(PANELS[k]());
   cbox.classList.toggle("vertical", S.dock === "left" || S.dock === "right");
   tbox.classList.toggle("horiz", S.toolDock === "top" || S.toolDock === "bottom");
+  lpanel.classList.toggle("horiz", S.layerDock === "top" || S.layerDock === "bottom");
   layout();
+}
+// Dónde soltar: en qué lado y antes de qué panel de ese lado
+function dropPlace(key, x, y) {
+  const z = dockZone(x, y);
+  const others = S.panelSeq.filter((k) => k !== key && S[PANEL_KEY[k]] === z && !PANELS[k]().hidden);
+  const before = others.find((k) => { const r = PANELS[k]().getBoundingClientRect(); return y < r.top + r.height / 2; });
+  return { z, before };
 }
 function dockZone(x, y) {
   const r = $("win").getBoundingClientRect(), fx = (x - r.left) / r.width, fy = (y - r.top) / r.height;
@@ -1251,17 +1290,23 @@ function dockZone(x, y) {
   if (fx > 0.78) return "right";
   return fy < 0.45 ? "top" : "bottom";
 }
-function dockDrag(grip, el, key) {
+function dockDrag(grip, el, pkey) {
+  const key = PANEL_KEY[pkey];
   grip.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     const g = $("dockGhost");
     grip.setPointerCapture(e.pointerId);
     const show = (ev) => {
-      const z = dockZone(ev.clientX, ev.clientY), m = $("main").getBoundingClientRect(), w = $("win").getBoundingClientRect();
+      const { z, before } = dropPlace(pkey, ev.clientX, ev.clientY), m = $("main").getBoundingClientRect(), w = $("win").getBoundingClientRect();
       const side = z === "left" || z === "right";
-      const th = el === tbox ? (side ? tbox.offsetWidth || 60 : (COARSE ? 90 : 56)) : (side ? (COARSE ? 64 : 44) : (COARSE ? 60 : 44));
-      const R2 = side ? { left: z === "left" ? m.left : m.right - th, top: m.top, width: th, height: m.height }
+      const th = side ? (COARSE ? 84 : 56) : (COARSE ? 60 : 44);
+      let R2 = side ? { left: z === "left" ? m.left : m.right - th, top: m.top, width: th, height: m.height }
         : { left: w.left + 3, top: z === "top" ? m.top : m.bottom - th, width: w.width - 6, height: th };
+      if (side) { // línea donde quedará: arriba del panel "before" o al final de la columna
+        const others = S.panelSeq.filter((k) => k !== pkey && S[PANEL_KEY[k]] === z && !PANELS[k]().hidden).map((k) => PANELS[k]().getBoundingClientRect());
+        const yLine = before ? PANELS[before]().getBoundingClientRect().top : (others.length ? Math.max(...others.map((r) => r.bottom)) : m.top);
+        R2 = { left: R2.left, top: clamp(yLine - 2, m.top, m.bottom - 40), width: th, height: Math.min(120, m.bottom - yLine) || 40 };
+      }
       Object.assign(g.style, { left: R2.left + "px", top: R2.top + "px", width: R2.width + "px", height: R2.height + "px" });
       g.hidden = false;
     };
@@ -1269,12 +1314,19 @@ function dockDrag(grip, el, key) {
     grip.onpointermove = show;
     grip.onpointerup = grip.onpointercancel = (ev) => {
       grip.onpointermove = grip.onpointerup = grip.onpointercancel = null; g.hidden = true;
-      if (ev.type === "pointerup") { S[key] = dockZone(ev.clientX, ev.clientY); applyDock(); saveSettings(); }
+      if (ev.type === "pointerup") {
+        const { z, before } = dropPlace(pkey, ev.clientX, ev.clientY);
+        const seq = S.panelSeq.filter((k) => k !== pkey);
+        if (before) seq.splice(seq.indexOf(before), 0, pkey);
+        else { const last = seq.map((k, i) => (S[PANEL_KEY[k]] === z ? i : -1)).filter((i) => i >= 0).pop(); seq.splice(last == null ? seq.length : last + 1, 0, pkey); }
+        S.panelSeq = seq; S[key] = z; applyDock(); saveSettings();
+      }
     };
   });
 }
-dockDrag($("cgrip"), cbox, "dock");
-dockDrag($("tgrip"), tbox, "toolDock");
+dockDrag($("cgrip"), cbox, "colors");
+dockDrag($("tgrip"), tbox, "tools");
+dockDrag($("lgrip"), lpanel, "layers");
 function setDock(key, where) { S[key] = where; applyDock(); saveSettings(); }
 
 // ---------- Temas de color ----------
@@ -1714,10 +1766,12 @@ function dialog({ title, html, icon: ic, buttons = [["Aceptar", "ok", true]], in
       <div class="btns">${buttons.map(([l, v, d]) => `<button class="btn98${d ? " def" : ""}" data-b="${v}">${l}</button>`).join("")}</div></div>`;
     m.hidden = false;
     const body = m.querySelector(".body");
+    // En el celular, si la ventana pide escribir, se muestra arriba para que el teclado no la tape
+    m.classList.toggle("kb", COARSE && !!body.querySelector("input.field:not([type=range]), textarea"));
     const done = (btn) => {
       if (onButton) onButton(btn, body);
       if (keep && keep(btn)) return;
-      m.hidden = true; m.onclick = null; document.removeEventListener("keydown", key, true); resolve({ btn, body }); m.innerHTML = "";
+      m.hidden = true; m.onclick = null; m.classList.remove("kb"); document.removeEventListener("keydown", key, true); resolve({ btn, body }); m.innerHTML = "";
       if (m.dataset.tmp) m.remove();
     };
     const key = (e) => {
@@ -1756,8 +1810,8 @@ function helpDlg() {
       <p><b>Mayús</b> al dibujar: líneas rectas a 45°, cuadrados y círculos perfectos.</p>
       <p><b>Teclas + y −:</b> hacen más grueso o más delgado el trazo de la herramienta actual, incluso mientras estás dibujando (antes de soltar el clic).</p>
       <p><b>Transparente:</b> el cuadro con cuadrícula de la paleta pinta transparencia; al guardar como PNG esa zona queda transparente. En iPhone, guarda con "Guardar en Archivos": la app Fotos muestra lo transparente como blanco. El cuadro de colores (arcoíris) abre el selector de cualquier color.</p>
-      <p><b>Herramientas y colores:</b> arrastra cada cuadro por su agarradera (las rayitas) para ponerlo a la izquierda, a la derecha, arriba o abajo. También desde el menú Ver.</p>
-      <p><b>Capas:</b> actívalas en Ver ▸ Capas. El panel aparece debajo de los tamaños: toca una capa para dibujar en ella, el ojo la muestra u oculta, la barra cambia su transparencia y los botones crean, duplican, eliminan, suben, bajan o combinan capas. Toca dos veces una capa para cambiarle el nombre. Al exportar PNG se unen todas las capas visibles.</p>
+      <p><b>Capas:</b> actívalas en Ver ▸ Capas. El panel de capas muestra la miniatura de cada capa; tócala para dibujar en ella. El botón <b>···</b> abre la ventana "Capas" con todas las opciones: mostrar u ocultar, opacidad, nueva, duplicar, eliminar, subir, bajar, combinar, acoplar y cambiar nombre. Al exportar PNG se unen todas las capas visibles.</p>
+      <p><b>Paneles:</b> herramientas, colores y capas se mueven arrastrando su agarradera. Si sueltas uno en el mismo lado que otro, se acomoda arriba o abajo de él, así el lienzo no se hace más angosto.</p>
       <p><b>Temas:</b> toca el ícono de arriba a la izquierda para cambiar los colores de la ventana.</p>
       <p><b>Archivo:</b> "Guardar" guarda tu dibujo en la carpeta <b>Dibujos</b> de este dispositivo y "Abrir" muestra esa carpeta. "Importar imagen" trae una foto o imagen de la galería o de la computadora. "Exportar PNG" crea un archivo para compartir. Al minimizar, la carpeta Dibujos aparece en el escritorio.</p></div>`,
   });
@@ -1801,6 +1855,7 @@ const MENUS = [
     ...[["left", "a la izquierda"], ["right", "a la derecha"], ["top", "arriba"], ["bottom", "abajo"]].map(([k, t]) => [`Herramientas ${t}`, "", () => setDock("toolDock", k), { chk: S.toolDock === k }]),
     "-",
     ...[["left", "a la izquierda"], ["right", "a la derecha"], ["top", "arriba"], ["bottom", "abajo"]].map(([k, t]) => [`Colores ${t}`, "", () => setDock("dock", k), { chk: S.dock === k }]),
+    ...(S.layersOn ? ["-", ...[["left", "a la izquierda"], ["right", "a la derecha"], ["top", "arriba"], ["bottom", "abajo"]].map(([k, t]) => [`Capas ${t}`, "", () => setDock("layerDock", k), { chk: S.layerDock === k }])] : []),
     ["Barra de herramientas &Texto", "", () => { S.showFont = !S.showFont; $("fontbar").hidden = !(S.showFont && tb); saveSettings(); }, { chk: S.showFont, dis: S.tool !== "text" }],
     "-",
     ["Zoom &normal", "Ctrl+RePág", () => setZoom(1), { chk: S.zoom === 1 }],
@@ -1814,6 +1869,7 @@ const MENUS = [
     ["&Ver mapa de bits", "Ctrl+F", viewBitmap],
     "-",
     ["Ca&pas", "Ctrl+K", toggleLayers, { chk: S.layersOn }],
+    ["&Opciones de capas...", "", openLayerWin, { dis: !S.layersOn }],
   ]],
   ["&Imagen", () => [
     ["&Voltear o girar...", "Ctrl+R", flipRotateDlg],

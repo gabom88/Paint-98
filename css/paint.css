@@ -427,3 +427,61 @@ img.px.inl { display: inline-block; width: 16px; height: 16px; vertical-align: -
 .stage.grabbing, .stage.grabbing * { cursor: grabbing !important; }
 .workspace:has(.stage.t-hand), .workspace:has(.stage.t-hand-tmp) { cursor: grab; }
 .toolbox.horiz .tools { grid-template-columns: repeat(9, var(--tb)); }
+
+/* ---------- Paneles apilados en un mismo lado ---------- */
+.dock-left, .dock-right { flex-direction: column; align-items: stretch; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.dock-left::-webkit-scrollbar, .dock-right::-webkit-scrollbar { display: none; }
+.dock > * { flex: none; }
+.dock-left > .toolbox, .dock-right > .toolbox { overflow: visible; }
+.dock-left > * + *, .dock-right > * + * { margin-top: 3px; border-top: 1px solid var(--shadow); box-shadow: inset 0 1px #fff; padding-top: 3px; }
+
+/* ---------- Panel de capas compacto ---------- */
+.layersbox { display: flex; flex-direction: column; gap: 3px; padding: 2px 4px 4px; width: calc(var(--tb) * 2 + 6px); align-self: center; }
+.layersbox:not(.horiz) .grip { flex: none; width: auto; height: 8px; align-self: stretch; margin: 0 0 1px;
+  background: linear-gradient(180deg, #fff 0 1px, var(--shadow) 1px 2px, transparent 2px 4px, #fff 4px 5px, var(--shadow) 5px 6px, transparent 6px) center/calc(100% - 6px) 6px no-repeat; }
+.layersbox .lhead { display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 1px 1px 1px 3px; }
+.lmore { width: 18px; height: 14px; padding: 0; display: grid; place-items: center; flex: none; }
+.lmore img { width: 11px; height: 11px; }
+.layersbox .llist { flex-direction: column; gap: 2px; max-height: 200px; }
+.layersbox .lrow { border: 0; background: none; padding: 2px; display: grid; place-items: center; width: 100%; }
+.layersbox .lrow.on { background: var(--title1); }
+.layersbox .lrow.off .lth { opacity: .35; }
+.layersbox .lth { width: 100%; height: auto; aspect-ratio: 4 / 3; }
+@media (pointer: coarse), (max-width: 700px) {
+  .layersbox:not(.horiz) .grip { height: 14px; }
+  .lmore { width: 28px; height: 22px; } .lmore img { width: 16px; height: 16px; }
+  .layersbox .llist { max-height: 260px; }
+}
+/* Acostado (arriba o abajo): miniaturas en fila */
+.layersbox.horiz { flex-direction: row; align-items: center; width: auto; align-self: stretch; padding: 3px 2px; }
+.layersbox.horiz .lhead { flex-direction: column; justify-content: center; }
+.layersbox.horiz .llist { flex-direction: row; max-height: none; overflow-x: auto; overflow-y: hidden; flex: 1; min-width: 0; }
+.layersbox.horiz .lrow { width: auto; flex: none; }
+.layersbox.horiz .lth { width: 44px; }
+@media (pointer: coarse), (max-width: 700px) { .layersbox.horiz .lth { width: 56px; } }
+
+/* ---------- Ventana "Capas" con todas las opciones ---------- */
+.layerwin { position: fixed; z-index: 45; left: 50%; top: 70px; transform: translateX(-50%); width: min(330px, calc(100vw - 16px)); }
+.lwbody { padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+.lwlist { background: #fff; box-shadow: var(--sunken); padding: 3px; max-height: min(42dvh, 320px); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.lwrow { display: flex; align-items: center; gap: 6px; padding: 3px; cursor: default; }
+.lwrow.on { background: var(--title1); color: #fff; }
+.lwrow .leye { width: 22px; height: 22px; } .lwrow .leye img { width: 16px; height: 16px; }
+.lth.big { width: 64px; height: 48px; }
+.lwname { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.lwname b { font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lwname small { font-size: 11px; opacity: .85; }
+.lwop { display: grid; grid-template-columns: auto 1fr 42px; align-items: center; gap: 6px; }
+.lwop input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: transparent; margin: 0; }
+.lwop input[type=range]::-webkit-slider-runnable-track { height: 4px; background: var(--face); box-shadow: var(--sunken); }
+.lwop input[type=range]::-moz-range-track { height: 4px; background: var(--face); box-shadow: var(--sunken); }
+.lwop input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 20px; margin-top: -8px; background: var(--face); box-shadow: var(--raised-btn); border: 0; border-radius: 0; }
+.lwop input[type=range]::-moz-range-thumb { width: 11px; height: 20px; background: var(--face); box-shadow: var(--raised-btn); border: 0; border-radius: 0; }
+.lwbtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.lwb { display: flex; align-items: center; justify-content: flex-start; gap: 5px; height: 26px; padding: 0 6px; }
+.lwb img { width: 11px; height: 11px; flex: none; }
+.lwb:disabled { color: var(--shadow); text-shadow: 1px 1px #fff; } .lwb:disabled img { opacity: .35; }
+@media (pointer: coarse) { .lwb { height: 36px; } .lwb img { width: 16px; height: 16px; } .layerwin { top: 60px; } }
+
+/* En el celular, las ventanas que piden escribir van arriba para que el teclado no las tape */
+.modal.kb { place-items: start center; padding-top: max(14px, env(safe-area-inset-top)); }

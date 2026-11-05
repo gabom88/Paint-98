@@ -35,14 +35,20 @@ en computadora también con la barra espaciadora).
 
 **Capas** (se activan en *Ver ▸ Capas*; vienen desactivadas)
 
-- Panel retro debajo de las opciones de tamaño, junto a las herramientas.
-- Cada capa tiene miniatura, ojo para mostrarla u ocultarla y **su propia
-  opacidad** (0 a 100 %).
-- Botones para **nueva, duplicar, eliminar, subir, bajar y combinar hacia
-  abajo**; en *Imagen* también está *Acoplar imagen*. Doble toque cambia el
-  nombre.
+- Panel propio y compacto con la miniatura de cada capa; se toca una para
+  dibujar en ella.
+- El botón **···** abre la ventana *Capas*, más grande y cómoda, con todas las
+  opciones: mostrar u ocultar, **opacidad** (0 a 100 %), nueva, duplicar,
+  eliminar, subir, bajar, combinar hacia abajo, acoplar y cambiar nombre.
 - Las capas se guardan en *Dibujos* y en el guardado automático; al exportar
   PNG se unen las capas visibles. Deshacer también funciona con las capas.
+
+**Paneles acomodables**
+
+- Herramientas, colores y capas se arrastran por su agarradera a la
+  izquierda, derecha, arriba o abajo. Si dos paneles van del mismo lado se
+  **apilan** (por ejemplo, capas debajo de las herramientas), así el lienzo no
+  se hace más angosto.
 
 **Colores**
 
@@ -76,9 +82,6 @@ en computadora también con la barra espaciadora).
   cambian tocando el ícono de arriba a la izquierda.
 - El botón a la derecha del menú oculta las herramientas para dejar más
   espacio al dibujo.
-- La caja de herramientas también se arrastra por su agarradera (las rayitas)
-  para ponerla **a la izquierda, a la derecha, arriba o abajo**. Arriba o abajo
-  queda acostada, con sus opciones al lado. También se elige desde el menú Ver.
 - **Celular:** dos dedos mueven la imagen; si los separas o los juntas, la
   amplías o la reduces, en cualquier zona (también en los bordes del lienzo).
 - **Carpeta Dibujos:** "Guardar" deja tus dibujos en este dispositivo, sin
