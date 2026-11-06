@@ -43,6 +43,18 @@ en computadora también con la barra espaciadora).
 - Las capas se guardan en *Dibujos* y en el guardado automático; al exportar
   PNG se unen las capas visibles. Deshacer también funciona con las capas.
 
+**Varias ventanas** (como en el escritorio)
+
+- Cada dibujo se abre en su propia ventana: *Archivo ▸ Abrir*, *Nueva
+  ventana*, la carpeta *Dibujos* del escritorio o el menú *Inicio*.
+- Al minimizar, todas las ventanas abiertas aparecen en la **barra de
+  tareas**; se toca una para volver a ella. También se cambia desde el ícono
+  de arriba a la izquierda.
+- La **X** cierra solo esa ventana. Cada una conserva sus capas, su deshacer
+  y su zoom, y el portapapeles se comparte: se copia con la selección en un
+  dibujo y se pega en otro.
+- Las ventanas abiertas se recuerdan al cerrar y volver a abrir la app.
+
 **Paneles acomodables**
 
 - Herramientas, colores y capas se arrastran por su agarradera a la

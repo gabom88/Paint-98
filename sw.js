@@ -1,6 +1,6 @@
 // sw.js — funciona sin conexión. Sube CACHE al cambiar archivos:
 // así la app detecta la versión nueva y muestra el aviso "Actualización disponible".
-const CACHE = "paint98-v17";
+const CACHE = "paint98-v18";
 const SHELL = [
   "./", "css/paint.css", "js/app.js", "js/raster.js", "js/icons.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",

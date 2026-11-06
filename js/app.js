@@ -203,6 +203,7 @@ async function layerRecs() {
   return Promise.all(layers.map(async (l, i) => {
     let c = l.canvas;
     if (i === active && sel && sel.floating) { c = copyCanvas(c); c.getContext("2d").drawImage(selcv, sel.x, sel.y); }
+    // toBlob copia la imagen en este momento, aunque luego se cambie de ventana
     return { name: l.name, opacity: l.opacity, visible: l.visible, blob: await new Promise((res) => c.toBlob(res, "image/png")) };
   }));
 }
@@ -409,7 +410,13 @@ let saveTimer = 0;
 function markDirty() { S.dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 700); scheduleThumbs(); }
 async function autosave() {
   saveSettings();
-  try { await idb.set("image", { layers: await layerRecs(), active, dirty: S.dirty }); } catch {}
+  const d = curDoc, meta = { active, fileName: S.fileName, docName: S.docName, dirty: S.dirty };
+  try {
+    d.cache = { ...meta, layers: await layerRecs() };
+    // Se guardan todas las ventanas abiertas (las demás con su última copia)
+    const open = docs.filter((x) => x.cache);
+    await idb.set("image", { v: 2, docs: open.map((x) => x.cache), cur: Math.max(0, open.indexOf(curDoc)) });
+  } catch {}
 }
 
 // ---------- Selección ----------
@@ -1410,7 +1417,9 @@ async function fileNew() {
 }
 function fileImport() { $("fileOpen").value = ""; $("fileOpen").click(); }
 $("fileOpen").addEventListener("change", async (e) => {
-  const f = e.target.files[0]; if (!f) return;
+  const f = e.target.files[0]; if (!f) { importNew = false; return; }
+  if (importNew || $("win").hidden || !isBlankDoc()) newWindow();
+  importNew = false;
   try { await openImage(f, f.name); } catch { msgBox("Paint 98 no puede leer este archivo.<br>No es un archivo de imagen válido o su formato no es compatible."); }
 });
 async function openImage(blob, name, docName = null) {
@@ -1515,7 +1524,8 @@ async function openExplorer() {
   const r = await p;
   if (r.btn !== "ok" || picked == null) return;
   const it = items[picked];
-  restoreWinIfMin();
+  // Si ya hay un dibujo en esta ventana (o Paint está minimizado), se abre en una ventana nueva
+  if ($("win").hidden || !isBlankDoc()) newWindow(); else restoreWinIfMin();
   try { await openDoc(it); } catch { msgBox("No se pudo abrir el dibujo."); }
 }
 async function openDoc(it) {
@@ -1529,7 +1539,6 @@ async function openDoc(it) {
   markDirty(); S.dirty = false; saveSettings();
   return true;
 }
-function restoreWinIfMin() { if ($("win").hidden) restoreWin(); }
 function pasteFrom() { $("filePasteFrom").value = ""; $("filePasteFrom").click(); }
 $("filePasteFrom").addEventListener("change", async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -1811,6 +1820,7 @@ function helpDlg() {
       <p><b>Teclas + y −:</b> hacen más grueso o más delgado el trazo de la herramienta actual, incluso mientras estás dibujando (antes de soltar el clic).</p>
       <p><b>Transparente:</b> el cuadro con cuadrícula de la paleta pinta transparencia; al guardar como PNG esa zona queda transparente. En iPhone, guarda con "Guardar en Archivos": la app Fotos muestra lo transparente como blanco. El cuadro de colores (arcoíris) abre el selector de cualquier color.</p>
       <p><b>Capas:</b> actívalas en Ver ▸ Capas. El panel de capas muestra la miniatura de cada capa; tócala para dibujar en ella. El botón <b>···</b> abre la ventana "Capas" con todas las opciones: mostrar u ocultar, opacidad, nueva, duplicar, eliminar, subir, bajar, combinar, acoplar y cambiar nombre. Al exportar PNG se unen todas las capas visibles.</p>
+      <p><b>Varias ventanas:</b> cada dibujo puede abrirse en su propia ventana. Archivo ▸ Abrir (o la carpeta Dibujos del escritorio) abre el dibujo en una ventana nueva si ya tienes uno abierto. Al minimizar, todas las ventanas aparecen en la barra de tareas; toca una para volver a ella. La X cierra solo esa ventana. Copia con la selección en una ventana y pega en otra.</p>
       <p><b>Paneles:</b> herramientas, colores y capas se mueven arrastrando su agarradera. Si sueltas uno en el mismo lado que otro, se acomoda arriba o abajo de él, así el lienzo no se hace más angosto.</p>
       <p><b>Temas:</b> toca el ícono de arriba a la izquierda para cambiar los colores de la ventana.</p>
       <p><b>Archivo:</b> "Guardar" guarda tu dibujo en la carpeta <b>Dibujos</b> de este dispositivo y "Abrir" muestra esa carpeta. "Importar imagen" trae una foto o imagen de la galería o de la computadora. "Exportar PNG" crea un archivo para compartir. Al minimizar, la carpeta Dibujos aparece en el escritorio.</p></div>`,
@@ -1822,6 +1832,7 @@ const canShare = !!(navigator.canShare && navigator.canShare({ files: [new File(
 const MENUS = [
   ["&Archivo", () => [
     ["&Nuevo", "Ctrl+N", fileNew],
+    ["Nueva &ventana", "", newWindow],
     ["&Abrir...", "Ctrl+O", openExplorer],
     ["Im&portar imagen...", "Ctrl+Mayús+O", fileImport],
     "-",
@@ -1832,7 +1843,7 @@ const MENUS = [
     "-",
     ["&Imprimir...", "Ctrl+P", printImg],
     "-",
-    ["Ce&rrar imagen", "", closeWin],
+    ["Ce&rrar ventana", "", closeWin],
   ]],
   ["&Edición", () => [
     ["&Deshacer", "Ctrl+Z", doUndo, { dis: !undo.length && !tb && !curve && !poly && !(sel && sel.floating) }],
@@ -1904,13 +1915,13 @@ function openMenu(i) {
   openIdx = i;
   document.querySelectorAll(".mlabel").forEach((el, k) => el.classList.toggle("open", k === i));
   $("sysIcon").classList.toggle("open", i === "sys");
-  menuItems = (i === "sys" ? SYSMENU : MENUS[i][1])().filter(Boolean);
+  menuItems = (i === "sys" ? SYSMENU : i === "start" ? STARTMENU : MENUS[i][1])().filter(Boolean);
   const dd = $("dropdown");
   dd.innerHTML = menuItems.map((it, k) => it === "-" ? `<div class="msep"></div>` :
     `<div class="mi${it[3]?.dis ? " dis" : ""}" data-k="${k}"><span class="chk">${it[3]?.chk ? "✓" : ""}</span><span class="lbl">${ul(it[0])}</span><span class="key">${COARSE ? "" : esc(it[1])}</span></div>`).join("");
   dd.hidden = false;
-  const r = (i === "sys" ? $("sysIcon") : document.querySelector(`.mlabel[data-m="${i}"]`)).getBoundingClientRect();
-  dd.style.top = r.bottom + "px";
+  const r = (i === "sys" ? $("sysIcon") : i === "start" ? $("tbStart") : document.querySelector(`.mlabel[data-m="${i}"]`)).getBoundingClientRect();
+  dd.style.top = (i === "start" ? Math.max(4, r.top - dd.offsetHeight) : r.bottom) + "px";
   dd.style.left = Math.max(2, Math.min(r.left, innerWidth - dd.offsetWidth - 2)) + "px";
 }
 function closeMenu() {
@@ -1935,7 +1946,7 @@ $("dropdown").addEventListener("click", (e) => {
   it[2]();
 });
 document.addEventListener("pointerdown", (e) => {
-  if (openIdx !== -1 && !e.target.closest("#dropdown") && !e.target.closest("#menus") && !e.target.closest("#sysIcon")) closeMenu();
+  if (openIdx !== -1 && !e.target.closest("#dropdown") && !e.target.closest("#menus") && !e.target.closest("#sysIcon") && !e.target.closest("#tbStart")) closeMenu();
 }, true);
 
 function toggleView(k) {
@@ -1950,7 +1961,13 @@ function applyView() {
   $("toggleTools").classList.toggle("on", S.showTools);
   layout();
 }
+const STARTMENU = () => [
+  ["&Paint 98 (ventana nueva)", "", launchPaint],
+  ["&Dibujos", "", openExplorer],
+  ["&Importar imagen...", "", importInNewWindow],
+];
 const SYSMENU = () => [
+  ...(docs.length > 1 ? [...docs.map((d, k) => [`${k + 1}. ${docName(d)}`, "", async () => { await switchTo(d); showWin(); }, { chk: d === curDoc }]), "-"] : []),
   ...THEMES.map(([id, name]) => [`Tema: ${name}`, "", () => setTheme(id), { chk: S.theme === id }]),
   "-",
   ["Mi&nimizar", "", minimize],
@@ -1991,30 +2008,106 @@ document.documentElement.style.setProperty("--ic-close", `url(${icon("close")})`
 document.documentElement.style.setProperty("--ic-min", `url(${icon("min")})`);
 document.documentElement.style.setProperty("--ic-max", `url(${icon("max")})`);
 document.documentElement.style.setProperty("--ic-restore", `url(${icon("restore")})`);
-function minimize() {
-  commitText();
-  $("win").hidden = true;
-  let tbar = $("taskbar");
-  if (!tbar) {
-    tbar = document.createElement("div"); tbar.id = "taskbar";
-    tbar.innerHTML = `<button class="btn98" id="tbStart"><img class="px" src="icons/logo-32.png" alt="">Inicio</button>
-      <button class="btn98 task" id="tbTask"><img class="px" src="icons/logo-32.png" alt="">${esc(S.fileName)} - Paint 98</button>`;
-    const desk = document.createElement("div"); desk.id = "deskIcon";
-    desk.innerHTML = `<button class="deskicon" id="diPaint"><img src="icons/icon-192.png" alt=""><span>Paint 98</span></button>
-      <button class="deskicon" id="diFolder"><img class="px" src="${icon("folder")}" alt=""><span>Dibujos</span></button>`;
-    document.body.append(tbar, desk);
-    for (const el of [tbar.querySelector("#tbTask"), tbar.querySelector("#tbStart"), desk.querySelector("#diPaint")]) el.addEventListener("click", restoreWin);
-    desk.querySelector("#diFolder").addEventListener("click", openExplorer);
-  }
-  tbar.querySelector("#tbTask").lastChild.textContent = `${S.fileName} - Paint 98`;
-  tbar.hidden = false; $("deskIcon").hidden = false;
+// ---------- Varias ventanas (como en el escritorio) ----------
+// Cada ventana es un dibujo con sus capas, su deshacer y su zoom. Se ve una a la vez;
+// las demás quedan en la barra de tareas al minimizar. El portapapeles se comparte.
+let docSeq = 1;
+let curDoc = { id: docSeq++ };
+const docs = [curDoc];
+const docName = (d) => (d === curDoc ? S.fileName : d.fileName || d.cache?.fileName || "sin título");
+function saveDocState(d) {
+  commitAll();
+  Object.assign(d, { layers, active, layerSeq, undo: undo.splice(0), redo: redo.splice(0),
+    fileName: S.fileName, docName: S.docName, dirty: S.dirty, zoom: S.zoom, sx: ws.scrollLeft, sy: ws.scrollTop });
 }
-function restoreWin() { $("taskbar").hidden = true; $("deskIcon").hidden = true; $("win").hidden = false; layout(); }
+async function loadDocState(d) {
+  sel = null; tb = null; curve = poly = null; op = null;
+  curDoc = d;
+  if (!d.layers && d.cache) { // ventana restaurada que todavía no se había abierto
+    await loadLayers(d.cache.layers, d.cache.active || 0);
+    Object.assign(d, { layers, active, layerSeq, undo: [], redo: [], fileName: d.cache.fileName, docName: d.cache.docName, dirty: d.cache.dirty, zoom: 0 });
+  }
+  layers = d.layers; layerSeq = d.layerSeq;
+  ov.width = layers[0].canvas.width; ov.height = layers[0].canvas.height;
+  undo.length = 0; undo.push(...(d.undo || [])); redo.length = 0; redo.push(...(d.redo || []));
+  S.fileName = d.fileName || "sin título"; S.docName = d.docName || null; S.dirty = !!d.dirty;
+  clearOv(); renderSel(); positionText(); $("fontbar").hidden = true;
+  setActive(d.active || 0, true);
+  if (d.zoom) { setZoom(d.zoom); ws.scrollLeft = d.sx; ws.scrollTop = d.sy; } else viewNew();
+  setTitle(); renderLayers(); saveSettings();
+}
+async function switchTo(d) {
+  if (d === curDoc) return;
+  autosave(); saveDocState(curDoc);
+  await loadDocState(d);
+}
+const isBlankDoc = () => !S.dirty && !S.docName && S.fileName === "sin título" && !undo.length && docs.includes(curDoc);
+// Abre una ventana nueva con un dibujo en blanco de 512 x 512
+function newWindow() {
+  if (docs.includes(curDoc)) { autosave(); saveDocState(curDoc); }
+  else docs.length = 0;
+  const d = { id: docSeq++ }; docs.push(d); curDoc = d;
+  sel = null; tb = null; curve = poly = null;
+  undo.length = 0; redo.length = 0;
+  const z = defaultSize(); resetLayers(z.w, z.h, "#ffffff");
+  S.fileName = "sin título"; S.docName = null; S.dirty = false;
+  setTitle(); showWin(); viewNew(); renderLayers(); markDirty(); S.dirty = false;
+}
+function showWin() {
+  $("taskbar") && ($("taskbar").hidden = true); $("deskIcon") && ($("deskIcon").hidden = true);
+  $("win").hidden = false; layout();
+}
+function restoreWin() { showWin(); }
+function restoreWinIfMin() { if ($("win").hidden) showWin(); }
+function ensureDesktop() {
+  if ($("taskbar")) return;
+  const tbar = document.createElement("div"); tbar.id = "taskbar";
+  tbar.innerHTML = `<button class="btn98" id="tbStart"><img class="px" src="icons/logo-32.png" alt="">Inicio</button><div class="tasks" id="tbTasks"></div>`;
+  const desk = document.createElement("div"); desk.id = "deskIcon";
+  desk.innerHTML = `<button class="deskicon" id="diPaint" title="Abrir Paint 98 en una ventana nueva"><img src="icons/icon-192.png" alt=""><span>Paint 98</span></button>
+    <button class="deskicon" id="diFolder"><img class="px" src="${icon("folder")}" alt=""><span>Dibujos</span></button>`;
+  document.body.append(tbar, desk);
+  tbar.querySelector("#tbStart").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (openIdx === "start") closeMenu(); else openMenu("start"); });
+  tbar.querySelector("#tbTasks").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-doc]"); if (!b) return;
+    const d = docs.find((x) => x.id === +b.dataset.doc); if (!d) return;
+    await switchTo(d); showWin();
+  });
+  desk.querySelector("#diPaint").addEventListener("click", launchPaint);
+  desk.querySelector("#diFolder").addEventListener("click", openExplorer);
+}
+function renderTaskbar() {
+  ensureDesktop();
+  $("tbTasks").innerHTML = docs.map((d) => `<button class="btn98 task${d === curDoc ? " cur" : ""}" data-doc="${d.id}" title="${esc(docName(d))} - Paint 98"><img class="px" src="icons/logo-32.png" alt=""><span>${esc(docName(d))}${COARSE ? "" : " - Paint 98"}</span></button>`).join("");
+}
+function showDesktop() {
+  closeMenu(); renderTaskbar();
+  $("win").hidden = true; $("taskbar").hidden = false; $("deskIcon").hidden = false;
+}
+function minimize() { commitText(); showDesktop(); }
+// El ícono "Paint 98" abre una ventana nueva (o la que quedó vacía al cerrar la última)
+function launchPaint() {
+  closeMenu();
+  if (!docs.includes(curDoc)) { docs.length = 0; docs.push(curDoc); showWin(); viewNew(); return; }
+  newWindow();
+}
+let importNew = false;
+function importInNewWindow() { importNew = true; fileImport(); }
+// Cerrar (la X de la ventana): cierra solo este dibujo
 async function closeWin() {
   commitAll();
   if (!(await askSave())) return;
-  S.dirty = false;
-  fileNew();
+  const i = docs.indexOf(curDoc);
+  if (i >= 0) docs.splice(i, 1);
+  curDoc.cache = null; curDoc.layers = null; curDoc.undo = curDoc.redo = null;
+  if (docs.length) await loadDocState(docs[Math.min(i, docs.length - 1)]);
+  else { // ya no hay ventanas: queda un dibujo en blanco listo para cuando se abra Paint
+    curDoc = { id: docSeq++ }; undo.length = 0; redo.length = 0;
+    const z = defaultSize(); resetLayers(z.w, z.h, "#ffffff");
+    S.fileName = "sin título"; S.docName = null; S.dirty = false; setTitle(); renderLayers();
+  }
+  showDesktop();
+  autosave();
 }
 $("btnMin").addEventListener("click", minimize);
 $("btnMax").addEventListener("click", () => {
@@ -2121,7 +2214,14 @@ async function init() {
   let restored = false;
   try {
     const rec = await idb.get("image");
-    if (rec && rec.layers && rec.layers.length) { await loadLayers(rec.layers, rec.active || 0); S.dirty = !!rec.dirty; restored = true; }
+    if (rec && rec.v === 2 && rec.docs && rec.docs.length) { // varias ventanas
+      docs.length = 0;
+      for (const c of rec.docs) docs.push({ id: docSeq++, cache: c });
+      const d = docs[Math.min(rec.cur || 0, docs.length - 1)];
+      curDoc = { id: -1 }; // de paso, para que loadDocState la cargue
+      await loadDocState(d);
+      restored = true;
+    } else if (rec && rec.layers && rec.layers.length) { await loadLayers(rec.layers, rec.active || 0); S.dirty = !!rec.dirty; restored = true; }
     else if (rec && rec.blob) {
       const c = await blobToCanvas(rec.blob);
       resetLayers(c.width, c.height, null);
